@@ -9,7 +9,7 @@ import { ReadingModule } from './reading/reading.module';
 import { AuthModule } from './auth/auth.module';
 import { GlobalJwtAuthGuard } from './common/guards/global-jwt-auth.guard';
 import { AdminController } from './admin/admin.controller';
-import { LogsService } from './common/logs/logs.service';
+import { LogsService } from './common/logging/logs.service';
 import { RolesGuard } from './common/guards/roles.guard';
 import { FriendsModule } from './friends/friends.module';
 
