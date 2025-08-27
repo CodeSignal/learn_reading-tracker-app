@@ -1,0 +1,79 @@
+# Docker Guide (macOS + Docker Desktop)
+
+This guide walks you through building and running the NestJS app in Docker on macOS.
+
+## Prerequisites
+- Docker Desktop for macOS installed and running
+- Terminal opened at the project root (same folder as `Dockerfile`)
+
+## 1) Build the Docker image
+- Builds the production image using the multi‑stage `Dockerfile`.
+
+```
+docker build -t reading-tracker-app:latest .
+```
+
+## 2) Run the container (map port 3000)
+- Runs the container in detached mode and maps host port 3000 to container port 3000.
+
+```
+docker run -d --name reading-tracker -p 3000:3000 reading-tracker-app:latest
+```
+
+If your Mac already uses port 3000, map a different host port (for example, 8080):
+```
+docker run -d --name reading-tracker -p 8080:3000 reading-tracker-app:latest
+```
+
+## 3) Verify the app is running
+- Open the app in your browser:
+```
+open http://localhost:3000
+```
+- Or test the public API endpoint:
+```
+curl http://localhost:3000/api/hello
+```
+Expected response:
+```
+{"success":true,"data":"Hello World!"}
+```
+
+## 4) View logs (optional)
+- Stream container logs to troubleshoot or confirm startup:
+```
+docker logs -f reading-tracker
+```
+
+## 5) Stop and remove the container
+- Stop the running container:
+```
+docker stop reading-tracker
+```
+- Remove the stopped container:
+```
+docker rm reading-tracker
+```
+
+## 6) Rebuild and clean up tips
+- Rebuild without using cache:
+```
+docker build --no-cache -t reading-tracker-app:latest .
+```
+- Remove the image (forces a clean rebuild next time):
+```
+docker rmi reading-tracker-app:latest
+```
+- List running containers:
+```
+docker ps
+```
+- List all containers (including exited):
+```
+docker ps -a
+```
+
+## Notes
+- The container exposes port 3000 and starts via `node dist/src/main.js`.
+- Static assets are served from `/app/public` and API endpoints are under `/api`, `/users`, `/books`, `/reading`, `/auth`, `/admin`, `/friends`.
+

@@ -1,0 +1,77 @@
+# Docker Guide (Windows + Docker Desktop)
+
+This guide walks you through building and running the NestJS app in Docker on Windows (PowerShell or Command Prompt).
+
+## Prerequisites
+- Docker Desktop for Windows installed and running
+- Terminal opened at the project root (same folder as `Dockerfile`)
+
+## 1) Build the Docker image
+Run in PowerShell or CMD:
+```
+docker build -t reading-tracker-app:latest .
+```
+
+## 2) Run the container (map port 3000)
+Detached mode, mapping host port 3000 to container port 3000:
+```
+docker run -d --name reading-tracker -p 3000:3000 reading-tracker-app:latest
+```
+
+If port 3000 is in use on Windows, map a different host port (e.g., 8080):
+```
+docker run -d --name reading-tracker -p 8080:3000 reading-tracker-app:latest
+```
+
+## 3) Verify the app is running
+- In a browser, open:
+```
+http://localhost:3000
+```
+- Or verify the public API endpoint. On Windows, prefer `curl.exe` to avoid PowerShell aliasing:
+```
+curl.exe http://localhost:3000/api/hello
+```
+Expected response:
+```
+{"success":true,"data":"Hello World!"}
+```
+
+## 4) View logs (optional)
+Tail container logs:
+```
+docker logs -f reading-tracker
+```
+
+## 5) Stop and remove the container
+Stop the container:
+```
+docker stop reading-tracker
+```
+Remove the stopped container:
+```
+docker rm reading-tracker
+```
+
+## 6) Rebuild and clean up tips
+Rebuild without cache:
+```
+docker build --no-cache -t reading-tracker-app:latest .
+```
+Remove the image (forces clean rebuild next time):
+```
+docker rmi reading-tracker-app:latest
+```
+List running containers:
+```
+docker ps
+```
+List all containers (including exited):
+```
+docker ps -a
+```
+
+## Notes
+- The container exposes port 3000 and starts via `node dist/src/main.js`.
+- Static assets are served from `/app/public` and API routes include `/api`, `/users`, `/books`, `/reading`, `/auth`, `/admin`, `/friends`.
+

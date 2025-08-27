@@ -1,0 +1,1620 @@
+===== friends/dto/create-friend-request.dto.ts =====
+import { IsInt } from 'class-validator';
+
+export class CreateFriendRequestDto {
+  @IsInt()
+  recipientId!: number;
+}
+
+
+
+===== friends/dto/handle-request.dto.ts =====
+import { IsEnum } from 'class-validator';
+
+export class HandleRequestDto {
+  @IsEnum(['accepted', 'declined'])
+  status!: 'accepted' | 'declined';
+}
+
+
+
+===== friends/friends.module.ts =====
+import { Module } from '@nestjs/common';
+import { FriendsService } from './friends.service';
+import { FriendsController } from './friends.controller';
+import { UsersModule } from '../users/users.module';
+import { ReadingModule } from '../reading/reading.module';
+
+@Module({
+  imports: [UsersModule, ReadingModule],
+  controllers: [FriendsController],
+  providers: [FriendsService],
+})
+export class FriendsModule {}
+
+
+
+===== friends/friends.service.ts =====
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { DatabaseService } from '../database/database.service';
+import { UsersService } from '../users/users.service';
+import { ReadingService } from '../reading/reading.service';
+
+@Injectable()
+export class FriendsService {
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly users: UsersService,
+    private readonly reading: ReadingService,
+  ) {}
+
+  requestFriend(senderId: number, recipientId: number) {
+    if (senderId === recipientId) {
+      throw new BadRequestException('Cannot send a friend request to yourself.');
+    }
+    this.users.findOne(senderId);
+    this.users.findOne(recipientId);
+
+    const requests = this.db.getFriendRequests();
+    const alreadyPending = requests.some(
+      (r) => r.senderId === senderId && r.recipientId === recipientId && r.status === 'pending',
+    );
+    if (alreadyPending) {
+      throw new BadRequestException('A pending request already exists.');
+    }
+
+    const id = (requests.length ? Math.max(...requests.map((r) => r.id)) : 0) + 1;
+    const newReq = { id, senderId, recipientId, status: 'pending' as const };
+    requests.push(newReq);
+    return newReq;
+  }
+
+  getIncomingRequests(userId: number) {
+    return this.db
+      .getFriendRequests()
+      .filter((r) => r.recipientId === userId && r.status === 'pending');
+  }
+
+  handleRequest(actingUserId: number, requestId: number, status: 'accepted' | 'declined') {
+    const req = this.db.getFriendRequests().find((r) => r.id === requestId);
+    if (!req) throw new NotFoundException('Friend request not found.');
+    if (req.status !== 'pending') throw new BadRequestException('Request already handled.');
+    if (req.recipientId !== actingUserId)
+      throw new ForbiddenException('Only the recipient can act on this request.');
+
+    req.status = status;
+
+    if (status === 'accepted') {
+      const sender = this.users.findOne(req.senderId);
+      const recipient = this.users.findOne(req.recipientId);
+      if (!sender.friendIds.includes(recipient.id)) sender.friendIds.push(recipient.id);
+      if (!recipient.friendIds.includes(sender.id)) recipient.friendIds.push(sender.id);
+    }
+    return req;
+  }
+
+  getFriendProgress(requesterId: number, friendId: number) {
+    const requester = this.users.findOne(requesterId);
+    if (!requester.friendIds.includes(friendId)) {
+      throw new ForbiddenException('You can only view progress of your friends.');
+    }
+    return this.reading.findAllForUser(friendId);
+  }
+}
+
+
+
+===== friends/friends.controller.ts =====
+import { Controller, Post, Body, Get, Patch, Param, ParseIntPipe } from '@nestjs/common';
+import { FriendsService } from './friends.service';
+import { CreateFriendRequestDto } from './dto/create-friend-request.dto';
+import { HandleRequestDto } from './dto/handle-request.dto';
+import { CurrentUser, TokenUser } from '../common/decorators/current-user.decorator';
+
+@Controller('friends')
+export class FriendsController {
+  constructor(private readonly friends: FriendsService) {}
+
+  @Post('request')
+  requestFriend(@CurrentUser() user: TokenUser, @Body() dto: CreateFriendRequestDto) {
+    return this.friends.requestFriend(user.userId, dto.recipientId);
+  }
+
+  @Get('requests')
+  getIncoming(@CurrentUser() user: TokenUser) {
+    return this.friends.getIncomingRequests(user.userId);
+  }
+
+  @Patch('requests/:requestId')
+  handle(
+    @CurrentUser() user: TokenUser,
+    @Param('requestId', ParseIntPipe) requestId: number,
+    @Body() dto: HandleRequestDto,
+  ) {
+    return this.friends.handleRequest(user.userId, requestId, dto.status);
+  }
+
+  @Get(':friendId/progress')
+  getFriendProgress(
+    @CurrentUser() user: TokenUser,
+    @Param('friendId', ParseIntPipe) friendId: number,
+  ) {
+    return this.friends.getFriendProgress(user.userId, friendId);
+  }
+}
+
+
+
+===== users/dto/create-user.dto.ts =====
+import { IsString, IsNotEmpty } from 'class-validator';
+
+export class CreateUserDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+}
+
+===== users/dto/update-user.dto.ts =====
+import { IsOptional, IsString } from 'class-validator';
+
+export class UpdateUserDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  username?: string;
+}
+
+
+===== users/users.module.ts =====
+import { Module } from '@nestjs/common';
+import { UsersService } from './users.service';
+import { UsersController } from './users.controller';
+import { ReadingModule } from '../reading/reading.module';
+
+@Module({
+  imports: [ReadingModule],
+  controllers: [UsersController],
+  providers: [UsersService],
+  exports: [UsersService],
+})
+export class UsersModule {}
+
+
+===== users/users.controller.ts =====
+import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, UseGuards } from '@nestjs/common';
+import { UsersService } from './users.service';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Public } from '../common/decorators/public.decorator';
+
+@Controller('users')
+export class UsersController {
+  constructor(private readonly usersService: UsersService) {}
+
+  @Get()
+  @Public()
+  // Return a list of all users
+  findAll() {
+    return this.usersService.findAll();
+  }
+
+  @Get(':id')
+  @Public()
+  // Retrieve a single user by ID
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.findOne(id);
+  }
+
+  @Post()
+  // Create a new user
+  create(@Body() createUserDto: CreateUserDto) {
+    return this.usersService.create(createUserDto);
+  }
+
+  @Patch(':id')
+  // Update an existing user
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  update(@Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto) {
+    return this.usersService.update(id, updateUserDto);
+  }
+
+  @Delete(':id')
+  // Remove a user
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.remove(id);
+  }
+
+  // NEW: list a user's friends
+  @Get(':id/friends')
+  findFriends(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.findFriends(id);
+  }
+
+  // NEW: user stats (auth required by default global guard)
+  @Get(':id/stats')
+  getStats(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.getStats(id);
+  }
+}
+
+
+===== users/users.service.ts =====
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { DatabaseService } from '../database/database.service';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { hashPassword } from '../utils/auth.utils';
+import { ReadingService } from '../reading/reading.service';
+
+@Injectable()
+export class UsersService {
+  constructor(private readonly db: DatabaseService, private readonly reading: ReadingService) {}
+
+  /**
+   * Retrieve all users.
+   */
+  findAll() {
+    return this.db.getUsers();
+  }
+
+  /**
+   * Find a user by ID.
+   * @throws NotFoundException if user does not exist.
+   */
+  findOne(id: number) {
+    const user = this.db.findUserById(id);
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found.`);
+    }
+    return user;
+  }
+
+  /**
+   * Create a new user with provided data.
+   */
+  create(createUserDto: CreateUserDto) {
+    const users = this.db.getUsers();
+    const id = Math.max(0, ...users.map(u => u.id)) + 1;
+    let base = (createUserDto.name || `user${id}`).toLowerCase().replace(/\s+/g, '');
+    if (!base) base = `user${id}`;
+    let username = base;
+    let suffix = 1;
+    const usernames = new Set(users.map(u => u.username));
+    while (usernames.has(username)) {
+      username = `${base}${suffix++}`;
+    }
+    const newUser = {
+      id,
+      name: createUserDto.name,
+      username,
+      passwordHash: hashPassword('changeme'),
+      role: 'user' as const,
+      friendIds: [] as number[],
+    };
+    users.push(newUser);
+    return newUser;
+  }
+
+  /**
+   * Update an existing user.
+   */
+  update(id: number, updateUserDto: UpdateUserDto) {
+    const user = this.findOne(id);
+    if (updateUserDto.username && updateUserDto.username !== user.username) {
+      const exists = this.db.getUsers().some(u => u.username === updateUserDto.username && u.id !== id);
+      if (exists) {
+        throw new BadRequestException('Username already exists');
+      }
+      user.username = updateUserDto.username;
+    }
+    if (typeof updateUserDto.name === 'string' && updateUserDto.name.length) {
+      user.name = updateUserDto.name;
+    }
+    return user;
+  }
+
+  /**
+   * Remove a user by ID.
+   */
+  remove(id: number) {
+    const users = this.db.getUsers();
+    const index = users.findIndex((u) => u.id === id);
+    if (index === -1) {
+      throw new NotFoundException(`User with ID ${id} not found.`);
+    }
+    const [removedUser] = users.splice(index, 1);
+    return removedUser;
+  }
+
+  /**
+   * Get a list of a user's friends (as full user objects).
+   */
+  findFriends(userId: number) {
+    const user = this.findOne(userId);
+    return user.friendIds.map(fid => this.findOne(fid));
+  }
+
+  getStats(userId: number) {
+    this.findOne(userId);
+    const sessions = this.reading.findAllForUser(userId);
+    const books = this.db.getBooks() as any[];
+
+    const totalPagesRead = sessions.reduce((sum: number, s: any) => sum + s.currentPage, 0);
+    let booksCompleted = 0;
+    let denom = 0;
+    for (const s of sessions as any[]) {
+      const b = books.find((bb: any) => bb.id === s.bookId);
+      if (!b || !b.totalPages) continue;
+      denom += b.totalPages;
+      if (s.currentPage >= b.totalPages) booksCompleted += 1;
+    }
+    const avgProgressPct = denom > 0 ? totalPagesRead / denom : 0;
+
+    return {
+      userId,
+      totalPagesRead,
+      booksInShelf: sessions.length,
+      booksCompleted,
+      avgProgressPct,
+    };
+  }
+}
+
+
+===== common/decorators/public.decorator.ts =====
+import { SetMetadata } from '@nestjs/common';
+export const IS_PUBLIC_KEY = 'isPublic';
+export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
+
+
+
+===== common/decorators/roles.decorator.ts =====
+import { SetMetadata } from '@nestjs/common';
+export const ROLES_KEY = 'roles';
+export type Role = 'user' | 'admin';
+export const Roles = (...roles: Role[]) => SetMetadata(ROLES_KEY, roles);
+
+
+
+===== common/decorators/current-user.decorator.ts =====
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+
+export interface TokenUser {
+  userId: number;
+  role: 'user' | 'admin';
+}
+
+export const CurrentUser = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext): TokenUser | undefined => {
+    const req = ctx.switchToHttp().getRequest() as any;
+    return req.user as TokenUser | undefined;
+  },
+);
+
+
+
+===== common/logs/logs.service.ts =====
+import { Injectable } from '@nestjs/common';
+
+export interface RequestLog {
+  method: string;
+  url: string;
+  status: number;
+  ms: number;
+  at: string;
+}
+
+@Injectable()
+export class LogsService {
+  private buffer: RequestLog[] = [];
+  private readonly max = 100;
+
+  add(entry: RequestLog) {
+    this.buffer.push(entry);
+    if (this.buffer.length > this.max) this.buffer.shift();
+  }
+
+  list(limit = 20) {
+    return this.buffer.slice(-limit).reverse();
+  }
+}
+
+
+
+===== common/guards/owner-or-admin.guard.ts =====
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+
+@Injectable()
+export class OwnerOrAdminGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const req = context.switchToHttp().getRequest() as any;
+    const user = req.user as { userId: number; role: 'user' | 'admin' } | undefined;
+    if (!user) return false; // Global JWT guard should set this
+
+    if (user.role === 'admin') return true;
+
+    const bodyUserId = Number(req.body?.userId);
+    if (user.userId !== bodyUserId) {
+      throw new ForbiddenException('You can only modify your own progress');
+    }
+    return true;
+  }
+}
+
+
+
+===== common/guards/jwt-auth.guard.ts =====
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { verifyJwt } from '../../auth/jwt.util';
+
+@Injectable()
+export class JwtAuthGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean | Promise<boolean> {
+    const req = context.switchToHttp().getRequest() as any;
+    const auth = req.headers['authorization'] as string | undefined;
+    if (!auth || !auth.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Missing token');
+    }
+    const token = auth.substring('Bearer '.length);
+    const payload = verifyJwt(token);
+    if (!payload) {
+      throw new UnauthorizedException('Invalid token');
+    }
+    req.user = { userId: payload.sub, role: payload.role };
+    return true;
+  }
+}
+
+
+
+===== common/guards/global-jwt-auth.guard.ts =====
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { verifyJwt } from '../../auth/jwt.util';
+
+@Injectable()
+export class GlobalJwtAuthGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
+  canActivate(ctx: ExecutionContext): boolean {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
+    if (isPublic) return true;
+
+    const req = ctx.switchToHttp().getRequest() as any;
+    const auth = req.headers['authorization'] as string | undefined;
+    if (!auth?.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Missing token');
+    }
+    const token = auth.slice(7);
+    const payload = verifyJwt(token);
+    if (!payload) throw new UnauthorizedException('Invalid token');
+
+    req.user = { userId: payload.sub, role: payload.role };
+    return true;
+  }
+}
+
+
+
+===== common/guards/roles.guard.ts =====
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { ROLES_KEY, Role } from '../decorators/roles.decorator';
+
+@Injectable()
+export class RolesGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const required = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (!required || required.length === 0) return true;
+
+    const req = context.switchToHttp().getRequest() as any;
+    const role = req.user?.role as Role | undefined;
+
+    if (!role || !required.includes(role)) {
+      throw new ForbiddenException('Insufficient role');
+    }
+    return true;
+  }
+}
+
+
+
+===== common/interceptors/transform.interceptor.ts =====
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+
+interface Envelope<T> {
+  data: T;
+  meta?: { count?: number; timestamp?: string };
+}
+
+@Injectable()
+export class TransformInterceptor<T> implements NestInterceptor<T, Envelope<T>> {
+  intercept(_context: ExecutionContext, next: CallHandler): Observable<Envelope<T>> {
+    return next.handle().pipe(
+      map((payload: any) => {
+        const meta: Envelope<T>['meta'] = { timestamp: new Date().toISOString() };
+        if (Array.isArray(payload)) meta.count = payload.length;
+        return { data: payload, meta };
+      }),
+    );
+  }
+}
+
+
+
+===== common/interceptors/logging.interceptor.ts =====
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { Response } from 'express';
+import { Observable } from 'rxjs';
+import { tap } from 'rxjs/operators';
+import { LogsService } from '../logs/logs.service';
+
+@Injectable()
+export class LoggingInterceptor implements NestInterceptor {
+  constructor(private readonly logs: LogsService) {}
+
+  intercept(ctx: ExecutionContext, next: CallHandler): Observable<any> {
+    const http = ctx.switchToHttp();
+    const req = http.getRequest<Request>();
+    const res = http.getResponse<Response>();
+    const method = (req as any).method;
+    const url = (req as any).originalUrl || (req as any).url;
+    const start = Date.now();
+
+    return next.handle().pipe(
+      tap(() => {
+        this.logs.add({
+          method,
+          url,
+          status: (res as any).statusCode,
+          ms: Date.now() - start,
+          at: new Date().toISOString(),
+        });
+      }),
+    );
+  }
+}
+
+
+
+===== common/filters/http-exception.filter.ts =====
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException } from '@nestjs/common';
+import { Request, Response } from 'express';
+
+@Catch(HttpException)
+export class HttpExceptionFilter implements ExceptionFilter {
+  catch(exception: HttpException, host: ArgumentsHost) {
+    const ctx = host.switchToHttp();
+    const res = ctx.getResponse<Response>();
+    const req = ctx.getRequest<Request>();
+    const status = exception.getStatus();
+    const raw = exception.getResponse();
+    const message = typeof raw === 'string' ? raw : (raw as any)?.message;
+
+    res.status(status).json({
+      error: {
+        statusCode: status,
+        message: Array.isArray(message) ? message.join(', ') : message,
+        path: req.url,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+}
+
+
+
+===== books/dto/create-book.dto.ts =====
+import { IsString, IsNotEmpty, IsInt, Min, IsOptional, IsISO8601 } from 'class-validator';
+
+export class CreateBookDto {
+  @IsString()
+  @IsNotEmpty()
+  title!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  author!: string;
+
+  @IsInt()
+  @Min(1)
+  totalPages!: number;
+
+  @IsOptional()
+  @IsISO8601()
+  publishDate?: string;
+}
+
+
+===== books/dto/update-book.dto.ts =====
+import { PartialType } from '@nestjs/mapped-types';
+import { CreateBookDto } from './create-book.dto';
+
+export class UpdateBookDto extends PartialType(CreateBookDto) {}
+
+===== books/dto/find-all-books.dto.ts =====
+import { IsEnum, IsInt, IsOptional, IsString, Min, Max } from 'class-validator';
+
+export class FindAllBooksDto {
+  @IsOptional()
+  @IsString()
+  q?: string; // case-insensitive title/author search
+
+  @IsOptional()
+  @IsEnum(['title', 'author', 'publishDate', 'uploadedAt', 'avgProgress'])
+  sortBy?: 'title' | 'author' | 'publishDate' | 'uploadedAt' | 'avgProgress';
+
+  @IsOptional()
+  @IsEnum(['asc', 'desc'])
+  order?: 'asc' | 'desc';
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number;
+}
+
+
+
+===== books/books.module.ts =====
+import { Module } from '@nestjs/common';
+import { BooksService } from './books.service';
+import { BooksController } from './books.controller';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+
+@Module({
+  controllers: [BooksController],
+  providers: [BooksService, RolesGuard, JwtAuthGuard],
+  exports: [BooksService],
+})
+export class BooksModule {}
+
+
+===== books/books.service.ts =====
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { DatabaseService } from '../database/database.service';
+import { CreateBookDto } from './dto/create-book.dto';
+import { UpdateBookDto } from './dto/update-book.dto';
+
+@Injectable()
+export class BooksService {
+  constructor(private readonly db: DatabaseService) {}
+
+  /**
+   * Create and store a new book.
+   */
+  create(createBookDto: CreateBookDto) {
+    const books = this.db.getBooks();
+    const newBook = {
+      id: books.length + 1,
+      ...createBookDto,
+      uploadedAt: new Date().toISOString(),
+    };
+    books.push(newBook);
+    return newBook;
+  }
+
+  /**
+   * Get books with optional search/sort/pagination.
+   */
+  findAll(query: any) {
+    const { q, sortBy, order = 'asc', page = 1, pageSize = 20 } = query;
+
+    let items = [...this.db.getBooks()];
+
+    if (q && String(q).trim().length) {
+      const needle = String(q).trim().toLowerCase();
+      items = items.filter(
+        (b: any) => b.title.toLowerCase().includes(needle) || b.author.toLowerCase().includes(needle),
+      );
+    }
+
+    // Pre-compute average progress per book for sorting if requested
+    let avgByBookId = new Map<number, number>();
+    if (sortBy === 'avgProgress') {
+      const sessions = this.db.getReadingSessions();
+      const totals = new Map<number, { readers: number; current: number; totalPages: number }>();
+      for (const b of items as any[]) totals.set(b.id, { readers: 0, current: 0, totalPages: (b as any).totalPages || 0 });
+      for (const s of sessions as any[]) {
+        const agg = totals.get((s as any).bookId);
+        if (!agg || !agg.totalPages) continue;
+        agg.readers += 1;
+        agg.current += (s as any).currentPage;
+      }
+      avgByBookId = new Map(
+        [...totals.entries()].map(([bookId, t]) => [bookId, t.readers ? t.current / (t.totalPages * t.readers) : 0]),
+      );
+    }
+
+    if (sortBy) {
+      const dir = order === 'asc' ? 1 : -1;
+      items.sort((a: any, b: any) => {
+        const A = sortBy === 'avgProgress' ? (avgByBookId.get(a.id) as any) : String(a[sortBy] ?? '').toLowerCase();
+        const B = sortBy === 'avgProgress' ? (avgByBookId.get(b.id) as any) : String(b[sortBy] ?? '').toLowerCase();
+        if (typeof A === 'number' && typeof B === 'number') return A < B ? -1 * dir : A > B ? 1 * dir : 0;
+        return String(A).localeCompare(String(B)) * dir;
+      });
+    }
+
+    const total = items.length;
+    const start = (page - 1) * pageSize;
+    const paged = items.slice(start, start + pageSize);
+    return { items: paged, page, pageSize, total };
+  }
+
+  /**
+   * Get a single book by ID.
+   * @throws NotFoundException if book is not found.
+   */
+  findOne(id: number) {
+    const book = this.db.getBooks().find((b: any) => b.id === id);
+    if (!book) {
+      throw new NotFoundException(`Book with ID ${id} not found.`);
+    }
+    return book;
+  }
+
+  /**
+   * Update an existing book's information.
+   */
+  update(id: number, updateBookDto: UpdateBookDto) {
+    const book = this.findOne(id);
+    Object.assign(book, updateBookDto);
+    return book;
+  }
+
+  /**
+   * Remove a book by ID.
+   */
+  remove(id: number) {
+    const books = this.db.getBooks();
+    const index = books.findIndex((b: any) => b.id === id);
+    if (index === -1) {
+      throw new NotFoundException(`Book with ID ${id} not found.`);
+    }
+    const [removedBook] = books.splice(index, 1);
+    return removedBook;
+  }
+
+  getStats(bookId: number) {
+    const book: any = this.findOne(bookId);
+    const sessions = this.db.getReadingSessions().filter((s: any) => s.bookId === bookId);
+    const readers = sessions.length;
+    const totalCurrent = sessions.reduce((acc: number, s: any) => acc + s.currentPage, 0);
+    const avgCurrentPage = readers ? totalCurrent / readers : 0;
+    const completed = sessions.filter((s: any) => book.totalPages && s.currentPage >= book.totalPages).length;
+    const completionRate = readers ? completed / readers : 0;
+    const avgProgressPct = readers && book.totalPages ? totalCurrent / (book.totalPages * readers) : 0;
+
+    return { bookId, readers, avgCurrentPage, completionRate, avgProgressPct };
+  }
+}
+
+
+===== books/books.controller.ts =====
+import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, UseGuards, Query } from '@nestjs/common';
+import { BooksService } from './books.service';
+import { CreateBookDto } from './dto/create-book.dto';
+import { UpdateBookDto } from './dto/update-book.dto';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Public } from '../common/decorators/public.decorator';
+import { FindAllBooksDto } from './dto/find-all-books.dto';
+
+@Controller('books')
+export class BooksController {
+  constructor(private readonly booksService: BooksService) {}
+
+  @Post()
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  // Create a new book entry (admin only)
+  create(@Body() createBookDto: CreateBookDto) {
+    return this.booksService.create(createBookDto);
+  }
+
+  @Get()
+  @Public()
+  // Retrieve books with search/sort/pagination
+  findAll(@Query() query: FindAllBooksDto) {
+    return this.booksService.findAll(query);
+  }
+
+  @Get(':id')
+  @Public()
+  // Retrieve a specific book by ID
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.booksService.findOne(id);
+  }
+
+  @Get(':id/stats')
+  @Public()
+  // Get aggregated stats for a book
+  getStats(@Param('id', ParseIntPipe) id: number) {
+    return this.booksService.getStats(id);
+  }
+
+  @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  // Update a book's data (admin only)
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateBookDto: UpdateBookDto,
+  ) {
+    return this.booksService.update(id, updateBookDto);
+  }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  // Remove a book by ID (admin only)
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.booksService.remove(id);
+  }
+}
+
+
+===== reading/dto/update-progress.dto.ts =====
+import { IsInt, Min, IsOptional, IsEnum } from 'class-validator';
+
+export class UpdateProgressDto {
+  @IsInt()
+  userId!: number;
+
+  @IsInt()
+  bookId!: number;
+
+  @IsInt()
+  @Min(0)
+  currentPage!: number;
+
+  @IsOptional()
+  @IsEnum(['not-started', 'in-progress', 'completed', 'want-to-read'])
+  status?: 'not-started' | 'in-progress' | 'completed' | 'want-to-read';
+}
+
+
+===== reading/dto/find-shelf.dto.ts =====
+import { IsEnum, IsOptional } from 'class-validator';
+
+export class FindShelfDto {
+  @IsOptional()
+  @IsEnum(['not-started', 'in-progress', 'completed', 'want-to-read'])
+  status?: 'not-started' | 'in-progress' | 'completed' | 'want-to-read';
+
+  @IsOptional()
+  @IsEnum(['title', 'author', 'updatedAt', 'progress'])
+  sortBy?: 'title' | 'author' | 'updatedAt' | 'progress';
+
+  @IsOptional()
+  @IsEnum(['asc', 'desc'])
+  order?: 'asc' | 'desc';
+}
+
+
+
+===== reading/reading.module.ts =====
+import { Module } from '@nestjs/common';
+import { ReadingService } from './reading.service';
+import { ReadingController } from './reading.controller';
+import { BooksModule } from '../books/books.module';
+import { OwnerOrAdminGuard } from '../common/guards/owner-or-admin.guard';
+
+@Module({
+  imports: [BooksModule],
+  controllers: [ReadingController],
+  providers: [ReadingService, OwnerOrAdminGuard],
+  exports: [ReadingService],
+})
+export class ReadingModule {}
+
+
+===== reading/reading.controller.ts =====
+import { Controller, Patch, Body, Get, Param, ParseIntPipe, UseGuards, Query } from '@nestjs/common';
+import { ReadingService } from './reading.service';
+import { UpdateProgressDto } from './dto/update-progress.dto';
+import { OwnerOrAdminGuard } from '../common/guards/owner-or-admin.guard';
+import { CurrentUser, TokenUser } from '../common/decorators/current-user.decorator';
+import { Public } from '../common/decorators/public.decorator';
+import { FindShelfDto } from './dto/find-shelf.dto';
+
+@Controller('reading')
+export class ReadingController {
+  constructor(private readonly readingService: ReadingService) {}
+
+  @Patch('progress')
+  @UseGuards(OwnerOrAdminGuard)
+  // Update reading progress for a user and book (auth required)
+  updateProgress(@CurrentUser() user: TokenUser, @Body() updateProgressDto: UpdateProgressDto) {
+    // For non-admins, force userId to the token's subject.
+    // Admins may update any user's progress (userId comes from body).
+    if (user.role !== 'admin') {
+      updateProgressDto.userId = user.userId;
+    }
+    return this.readingService.updateProgress(updateProgressDto);
+  }
+  @Get('progress/:bookId')
+  @Public()
+  // Get reading progress for a specific book across all users
+  getProgress(@Param('bookId', ParseIntPipe) bookId: number) {
+    return this.readingService.getProgressByBook(bookId);
+  }
+
+  @Get('shelf')
+  // Get the authenticated user's shelf with optional filters/sorting
+  getShelf(@CurrentUser() user: TokenUser, @Query() query: FindShelfDto) {
+    return this.readingService.getShelf(user.userId, query);
+  }
+}
+
+
+===== reading/reading.service.ts =====
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { DatabaseService } from '../database/database.service';
+import { BooksService } from '../books/books.service';
+import { UpdateProgressDto } from './dto/update-progress.dto';
+import { FindShelfDto } from './dto/find-shelf.dto';
+
+@Injectable()
+export class ReadingService {
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly booksService: BooksService,
+  ) {}
+
+  private deriveStatus(currentPage: number, totalPages: number): 'not-started' | 'in-progress' | 'completed' {
+    if (currentPage <= 0) return 'not-started';
+    if (totalPages > 0 && currentPage >= totalPages) return 'completed';
+    return 'in-progress';
+  }
+
+  /**
+   * Update or create a reading session for a user and book.
+   */
+  updateProgress(dto: UpdateProgressDto) {
+    // Ensure user and book exist
+    // Validate user exists
+    if (!this.db.findUserById(dto.userId)) {
+      throw new NotFoundException('User not found');
+    }
+    const book: any = this.booksService.findOne(dto.bookId);
+
+    let session = this.db
+      .getReadingSessions()
+      .find((s: any) => s.userId === dto.userId && s.bookId === dto.bookId);
+
+    const normalized =
+      dto.status === 'want-to-read'
+        ? { currentPage: 0, status: 'want-to-read' as const }
+        : { currentPage: dto.currentPage, status: dto.status ?? this.deriveStatus(dto.currentPage, book.totalPages) };
+
+    if (session) {
+      session.currentPage = normalized.currentPage;
+      (session as any).status = normalized.status;
+      (session as any).updatedAt = new Date().toISOString();
+    } else {
+      session = { userId: dto.userId, bookId: dto.bookId, currentPage: normalized.currentPage, status: normalized.status, updatedAt: new Date().toISOString() };
+      this.db.getReadingSessions().push(session);
+    }
+    return session;
+  }
+
+  /**
+   * Get reading progress for a specific book across all users.
+   */
+  getProgressByBook(bookId: number) {
+    this.booksService.findOne(bookId);
+    const sessions = this.db.getReadingSessions().filter(s => s.bookId === bookId);
+    return sessions.map(s => ({
+      user: this.db.findUserById(s.userId),
+      currentPage: s.currentPage,
+    }));
+  }
+
+  /**
+   * Get all reading sessions for a specific user (friend viewing).
+   */
+  findAllForUser(userId: number) {
+    if (!this.db.findUserById(userId)) throw new NotFoundException('User not found');
+    return this.db.getReadingSessions().filter((s) => s.userId === userId);
+  }
+
+  getShelf(userId: number, query: FindShelfDto) {
+    if (!this.db.findUserById(userId)) throw new NotFoundException('User not found');
+    const books = this.db.getBooks();
+    const byId = new Map(books.map((b: any) => [b.id, b]));
+
+    let items = this.findAllForUser(userId).map((s: any) => {
+      const book = byId.get(s.bookId)! as any;
+      const total = book.totalPages || 0;
+      const status = (s as any).status ?? this.deriveStatus(s.currentPage, total);
+      const progress = total ? s.currentPage / total : 0;
+      return {
+        bookId: book.id,
+        title: book.title,
+        author: book.author,
+        totalPages: total,
+        currentPage: s.currentPage,
+        status,
+        progress,
+        updatedAt: (s as any).updatedAt ?? null,
+      };
+    });
+
+    if (query.status) items = items.filter((i) => i.status === query.status);
+
+    const order = query.order ?? 'asc';
+    const cmpNum = (a: number, b: number) => (a < b ? (order === 'asc' ? -1 : 1) : a > b ? (order === 'asc' ? 1 : -1) : 0);
+    const cmpStr = (a: string, b: string) => cmpNum(a.localeCompare(b), 0);
+
+    if (query.sortBy === 'title') items.sort((a, b) => cmpStr(a.title, b.title));
+    if (query.sortBy === 'author') items.sort((a, b) => cmpStr(a.author, b.author));
+    if (query.sortBy === 'progress') items.sort((a, b) => cmpNum(a.progress, b.progress));
+    if (query.sortBy === 'updatedAt') items.sort((a, b) => cmpStr(a.updatedAt || '', b.updatedAt || ''));
+
+    return items;
+  }
+}
+
+
+===== app.service.ts =====
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class AppService {
+  getHello(): string {
+    return 'Hello World!';
+  }
+}
+
+===== app.controller.ts =====
+import { Controller, Get } from '@nestjs/common';
+import { AppService } from './app.service';
+
+@Controller('api')
+export class AppController {
+  constructor(private readonly appService: AppService) {}
+
+  @Get('hello')
+  getHello(): string {
+    return this.appService.getHello();
+  }
+}
+
+===== main.ts =====
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
+import { join } from 'path';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { Request, Response } from 'express';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { LogsService } from './common/logs/logs.service';
+
+async function bootstrap() {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Enable CORS for all origins to allow frontend communication and enable validation
+  app.enableCors({ origin: '*', credentials: true });
+  // Enable global validation pipe for DTO validation
+  app.useGlobalPipes(new ValidationPipe({ transform: true, transformOptions: { enableImplicitConversion: true } }));
+  // Global interceptors and filters
+  const logs = app.get(LogsService);
+  app.useGlobalInterceptors(new LoggingInterceptor(logs), new TransformInterceptor());
+  app.useGlobalFilters(new HttpExceptionFilter());
+  // Serve static UI from public folder
+  const publicDir = join(__dirname, '..', 'public');
+  app.useStaticAssets(publicDir);
+  const server = app.getHttpAdapter().getInstance();
+  // SPA fallback: exclude API routes and module endpoints
+  // Exclude API routes from SPA fallback, including newly added 'friends'
+  server.get(/^(?!\/(?:api|users|books|reading|auth|admin|friends)).*/, (req: Request, res: Response) =>
+    res.sendFile(join(publicDir, 'index.html')),
+  );
+
+  const port = process.env.PORT || 3000;
+  await app.listen(port);
+  console.log(`Application is running on: http://localhost:${port}`);
+}
+
+bootstrap();
+
+
+===== app.module.ts =====
+import { Module, Global } from '@nestjs/common';
+import { APP_GUARD, Reflector } from '@nestjs/core';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { UsersModule } from './users/users.module';
+import { DatabaseService } from './database/database.service';
+import { BooksModule } from './books/books.module';
+import { ReadingModule } from './reading/reading.module';
+import { AuthModule } from './auth/auth.module';
+import { GlobalJwtAuthGuard } from './common/guards/global-jwt-auth.guard';
+import { AdminController } from './admin/admin.controller';
+import { LogsService } from './common/logs/logs.service';
+import { RolesGuard } from './common/guards/roles.guard';
+import { FriendsModule } from './friends/friends.module';
+
+@Global()
+@Module({
+  imports: [UsersModule, BooksModule, ReadingModule, AuthModule, FriendsModule],
+  controllers: [AppController, AdminController],
+  providers: [
+    AppService,
+    DatabaseService,
+    LogsService,
+    RolesGuard,
+    Reflector,
+    { provide: APP_GUARD, useClass: GlobalJwtAuthGuard },
+  ],
+  exports: [DatabaseService],
+})
+export class AppModule {}
+
+
+===== admin/admin.controller.ts =====
+import { Controller, Get, Query, DefaultValuePipe, ParseIntPipe, UseGuards } from '@nestjs/common';
+import { LogsService } from '../common/logs/logs.service';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+
+@Controller('admin')
+export class AdminController {
+  constructor(private readonly logs: LogsService) {}
+
+  @Get('logs')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  getLogs(@Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number) {
+    return this.logs.list(limit);
+  }
+}
+
+
+===== auth/auth.controller.ts =====
+import { Body, Controller, Post } from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { Public } from '../common/decorators/public.decorator';
+
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Post('register')
+  @Public()
+  register(@Body() body: { name: string; username: string; password: string }) {
+    return this.authService.register(body.name, body.username, body.password);
+  }
+
+  @Post('login')
+  @Public()
+  login(@Body() body: { username: string; password: string }) {
+    return this.authService.login(body.username, body.password);
+  }
+}
+
+
+
+===== auth/auth.service.ts =====
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { DatabaseService } from '../database/database.service';
+import { hashPassword, verifyPassword } from '../utils/auth.utils';
+import { signJwt } from './jwt.util';
+import { persistUserSeed } from '../utils/auth.utils';
+
+@Injectable()
+export class AuthService {
+  constructor(private readonly db: DatabaseService) {}
+
+  async register(name: string, username: string, password: string) {
+    if (!name || !username || !password) {
+      throw new BadRequestException('Missing required fields');
+    }
+    const users = this.db.getUsers();
+    const exists = users.some(u => u.username === username);
+    if (exists) {
+      throw new BadRequestException('Username already exists');
+    }
+    const id = Math.max(0, ...users.map(u => u.id)) + 1;
+    const newUser = {
+      id,
+      name,
+      username,
+      passwordHash: hashPassword(password),
+      role: 'user' as const,
+      friendIds: [] as number[],
+    };
+    this.db.getUsers().push(newUser);
+    // Persist into src/database/mock-db.ts for course base task continuity
+    persistUserSeed(this.db);
+    return { message: 'User registered successfully' };
+  }
+
+  async login(username: string, password: string) {
+    if (!username || !password) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    const user = this.db.getUsers().find(u => u.username === username);
+    if (!user || !verifyPassword(password, user.passwordHash)) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    const access_token = signJwt({ sub: user.id, role: user.role }, 60 * 60);
+    return { access_token };
+  }
+}
+
+
+===== auth/jwt.util.ts =====
+import { createHmac } from 'crypto';
+
+const SECRET = 'jwt-secret';
+
+function base64url(input: Buffer | string) {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+export interface JwtPayload {
+  sub: number;
+  role: 'user' | 'admin';
+  iat?: number;
+  exp?: number;
+}
+
+export function signJwt(payload: Omit<JwtPayload, 'iat' | 'exp'>, expiresInSeconds = 3600): string {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const fullPayload: JwtPayload = { ...payload, iat: now, exp: now + expiresInSeconds };
+
+  const headerB64 = base64url(JSON.stringify(header));
+  const payloadB64 = base64url(JSON.stringify(fullPayload));
+  const data = `${headerB64}.${payloadB64}`;
+  const sig = createHmac('sha256', SECRET).update(data).digest();
+  const sigB64 = base64url(sig);
+  return `${data}.${sigB64}`;
+}
+
+export function verifyJwt(token: string): JwtPayload | null {
+  try {
+    const [headerB64, payloadB64, sigB64] = token.split('.');
+    if (!headerB64 || !payloadB64 || !sigB64) return null;
+    const data = `${headerB64}.${payloadB64}`;
+    const expected = base64url(createHmac('sha256', SECRET).update(data).digest());
+    if (expected !== sigB64) return null;
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8')) as JwtPayload;
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+
+
+===== auth/auth.module.ts =====
+import { Module } from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
+
+@Module({
+  controllers: [AuthController],
+  providers: [AuthService],
+  exports: [AuthService],
+})
+export class AuthModule {}
+
+
+
+===== types/shims.d.ts =====
+// Minimal ambient module shims to avoid needing @types/* packages at build time.
+declare module 'express' {
+  export type Request = any;
+  export type Response = any;
+  const e: any;
+  export default e;
+}
+declare module '@nestjs/platform-express' {
+  export type NestExpressApplication = any;
+}
+declare module 'body-parser' { const v: any; export = v; }
+declare module 'connect' { const v: any; export = v; }
+declare module 'express-serve-static-core' { const v: any; export = v; }
+declare module 'http-errors' { const v: any; export = v; }
+declare module 'mime' { const v: any; export = v; }
+declare module 'qs' { const v: any; export = v; }
+declare module 'range-parser' { const v: any; export = v; }
+declare module 'send' { const v: any; export = v; }
+declare module 'serve-static' { const v: any; export = v; }
+declare module 'strip-bom' { const v: any; export = v; }
+declare module 'strip-json-comments' { const v: any; export = v; }
+declare module 'path' { const v: any; export = v; }
+
+// globals used by Node code in this project
+declare var __dirname: string;
+declare var process: any;
+
+
+
+===== utils/auth.utils.ts =====
+// src/auth/auth.util.ts
+import * as fs from 'fs';
+import * as path from 'path';
+import type { DatabaseService } from '../database/database.service';
+import * as bcrypt from 'bcryptjs';
+
+/**
+ * Password utilities (moved from mock-db.ts)
+ * Uses bcrypt for hashing and verification.
+ */
+const BCRYPT_ROUNDS = 10; // reasonable default for demos
+
+export function hashPassword(password: string): string {
+  const salt = bcrypt.genSaltSync(BCRYPT_ROUNDS);
+  return bcrypt.hashSync(password, salt);
+}
+
+export function verifyPassword(password: string, passwordHash: string): boolean {
+  try {
+    return bcrypt.compareSync(password, passwordHash);
+  } catch {
+    return false;
+  }
+}
+
+/** Utilities for persisting user seeds (existing code) */
+export function toTsLiteral(obj: any): string {
+  const q = (s: string) => JSON.stringify(String(s));
+  const friendIds = Array.isArray(obj.friendIds) ? `[${obj.friendIds.join(', ')}]` : '[]';
+  return `{ id: ${obj.id}, name: ${q(obj.name)}, username: ${q(
+    obj.username
+  )}, passwordHash: ${q(obj.passwordHash)}, role: ${q(obj.role)}, friendIds: ${friendIds} }`;
+}
+
+export function persistUserSeed(db: DatabaseService) {
+  try {
+    const projectRoot = path.join(__dirname, '..', '..');
+    const filePath = path.join(projectRoot, 'src', 'database', 'mock-db.ts');
+    if (!fs.existsSync(filePath)) return;
+    const content = fs.readFileSync(filePath, 'utf8');
+    const regex = /export const users: User\[\] = \[([\s\S]*?)\];/m;
+    if (!regex.test(content)) return;
+    const arr = db.getUsers().map((u: any) => toTsLiteral(u)).join(',\n  ');
+    const replacement = `export const users: User[] = [\n  ${arr}\n];`;
+    const updated = content.replace(regex, replacement);
+    if (updated !== content) {
+      fs.writeFileSync(filePath, updated, 'utf8');
+    }
+  } catch {
+    // ignore persistence errors
+  }
+}
+
+
+===== database/database.service.ts =====
+import { Injectable } from '@nestjs/common';
+import { users, books, readingSessions, friendRequests, User, Book, ReadingSession, FriendRequest } from './mock-db';
+
+@Injectable()
+export class DatabaseService {
+  private readonly users: User[] = users;
+  private readonly books: Book[] = books;
+  private readonly readingSessions: ReadingSession[] = readingSessions;
+  private readonly friendRequests: FriendRequest[] = friendRequests;
+
+  /**
+   * Retrieve all users.
+   */
+  getUsers(): User[] {
+    return this.users;
+  }
+
+  /**
+   * Find a user by its ID.
+   */
+  findUserById(id: number): User | undefined {
+    return this.users.find(user => user.id === id);
+  }
+
+  /**
+   * Retrieve all books.
+   */
+  getBooks(): Book[] {
+    return this.books;
+  }
+
+  /**
+   * Find a book by its ID.
+   */
+  findBookById(id: number): Book | undefined {
+    return this.books.find(book => book.id === id);
+  }
+
+  /**
+   * Retrieve all reading sessions.
+   */
+  getReadingSessions(): ReadingSession[] {
+    return this.readingSessions;
+  }
+
+  /**
+   * Retrieve all friend requests.
+   */
+  getFriendRequests(): FriendRequest[] {
+    return this.friendRequests;
+  }
+}
+
+
+===== database/mock-db.ts =====
+// src/database/mock-db.ts
+import { hashPassword } from '../utils/auth.utils';
+
+export interface User {
+  id: number;
+  name: string;
+  username: string;
+  passwordHash: string; // hashed password (bcrypt)
+  role: 'user' | 'admin';
+  friendIds: number[]; // NEW: list of confirmed friend user IDs
+}
+
+export interface Book {
+  id: number;
+  title: string;
+  author: string;
+  totalPages: number;
+  publishDate?: string; // ISO 8601
+  uploadedAt: string;   // ISO 8601
+}
+
+export interface ReadingSession {
+  userId: number;
+  bookId: number;
+  currentPage: number;
+  status?: 'not-started' | 'in-progress' | 'completed' | 'want-to-read';
+  updatedAt?: string; // ISO 8601
+}
+
+// NEW: Friend request structure
+export interface FriendRequest {
+  id: number;
+  senderId: number;
+  recipientId: number;
+  status: 'pending' | 'accepted' | 'declined';
+}
+
+// Seed users with an admin account and a sample user
+const adminPassword = 'admin';
+const userPassword = 'user123';
+
+function ensureUniqueUsers(arr: User[]): User[] {
+  const seen = new Set<string>();
+  const out: User[] = [];
+  for (const u of arr) {
+    if (seen.has(u.username)) continue;
+    seen.add(u.username);
+    out.push(u);
+  }
+  return out;
+}
+
+const seedUsers: User[] = [
+  { id: 1, name: 'Admin', username: 'admin', passwordHash: hashPassword(adminPassword), role: 'admin', friendIds: [] },
+  { id: 2, name: 'Alice', username: 'alice', passwordHash: hashPassword(userPassword), role: 'user', friendIds: [] },
+];
+
+export const users: User[] = ensureUniqueUsers(seedUsers);
+
+// Enriched book seed data with analytics-friendly fields.
+export const books: Book[] = [
+  {
+    id: 1,
+    title: 'The Hobbit',
+    author: 'J.R.R. Tolkien',
+    totalPages: 310,
+    publishDate: '1937-09-21',
+    uploadedAt: new Date().toISOString(),
+  },
+  {
+    id: 2,
+    title: 'Dune',
+    author: 'Frank Herbert',
+    totalPages: 412,
+    publishDate: '1965-08-01',
+    uploadedAt: new Date().toISOString(),
+  },
+  {
+    id: 3,
+    title: 'Clean Code',
+    author: 'Robert C. Martin',
+    totalPages: 464,
+    publishDate: '2008-08-01',
+    uploadedAt: new Date().toISOString(),
+  },
+  {
+    id: 4,
+    title: 'The Pragmatic Programmer',
+    author: 'Andrew Hunt',
+    totalPages: 352,
+    publishDate: '1999-10-30',
+    uploadedAt: new Date().toISOString(),
+  },
+  {
+    id: 5,
+    title: '1984',
+    author: 'George Orwell',
+    totalPages: 328,
+    publishDate: '1949-06-08',
+    uploadedAt: new Date().toISOString(),
+  },
+  {
+    id: 6,
+    title: 'To Kill a Mockingbird',
+    author: 'Harper Lee',
+    totalPages: 281,
+    publishDate: '1960-07-11',
+    uploadedAt: new Date().toISOString(),
+  },
+  {
+    id: 7,
+    title: 'The Name of the Wind',
+    author: 'Patrick Rothfuss',
+    totalPages: 662,
+    publishDate: '2007-03-27',
+    uploadedAt: new Date().toISOString(),
+  },
+  {
+    id: 8,
+    title: 'Sapiens',
+    author: 'Yuval Noah Harari',
+    totalPages: 443,
+    publishDate: '2011-01-01',
+    uploadedAt: new Date().toISOString(),
+  },
+];
+
+// Seed reading sessions include status and timestamps
+export const readingSessions: ReadingSession[] = [
+  { userId: 1, bookId: 1, currentPage: 50, status: 'in-progress', updatedAt: new Date().toISOString() },
+  { userId: 2, bookId: 2, currentPage: 100, status: 'in-progress', updatedAt: new Date().toISOString() },
+  { userId: 2, bookId: 3, currentPage: 0, status: 'want-to-read', updatedAt: new Date().toISOString() },
+  { userId: 1, bookId: 4, currentPage: 352, status: 'completed', updatedAt: new Date().toISOString() },
+];
+
+// NEW: in-memory friend requests store
+export const friendRequests: FriendRequest[] = [];
+
+

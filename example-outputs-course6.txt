@@ -1,0 +1,16 @@
+--- GET /api/hello ---
+{"success":false,"statusCode":401,"message":"Missing token"}\n--- POST /auth/login (admin/admin) ---
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc1NjI4NTc5NywiZXhwIjoxNzU2Mjg5Mzk3fQ.Vom-u6A4Hv0dAxt1acyNI-CZTor6IuT9gVeINNprTd0
+\n--- POST /auth/login (alice/user123) ---
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzU2Mjg1Nzk3LCJleHAiOjE3NTYyODkzOTd9.Extft662dpMImLvhFoC1b6kOQa8l8d6dwmn-GZ_WJVs
+\n--- GET /users (public) ---
+{"success":true,"data":[{"id":1,"name":"Admin","username":"admin","passwordHash":"4e4ea6b5cfcddddf574b4d2e23e2a79f7c2144b1d986e0bb79195e8cedfc589f","role":"admin","friendIds":[]},{"id":2,"name":"Alice","username":"alice","passwordHash":"9c9a95871e872929a8942e88513736d9bace87f0752425304b57cf87bea7fda7","role":"user","friendIds":[]}]}\n--- GET /books (public) ---
+{"success":true,"data":{"items":[{"id":1,"title":"The Hobbit","author":"J.R.R. Tolkien","totalPages":310,"publishDate":"1937-09-21","uploadedAt":"2025-08-27T09:09:56.273Z"},{"id":7,"title":"The Name of the Wind","author":"Patrick Rothfuss","totalPages":662,"publishDate":"2007-03-27","uploadedAt":"2025-08-27T09:09:56.273Z"},{"id":4,"title":"The Pragmatic Programmer","author":"Andrew Hunt","totalPages":352,"publishDate":"1999-10-30","uploadedAt":"2025-08-27T09:09:56.273Z"}],"page":1,"pageSize":5,"total":3}}\n--- GET /books/1/stats ---
+{"success":true,"data":{"bookId":1,"readers":1,"avgCurrentPage":50,"completionRate":0,"avgProgressPct":0.16129032258064516}}\n--- GET /reading/shelf (alice) ---
+{"success":true,"data":[{"bookId":2,"title":"Dune","author":"Frank Herbert","progress":0.24271844660194175,"currentPage":100,"status":"in-progress","updatedAt":"2025-08-27T09:09:56.273Z"},{"bookId":3,"title":"Clean Code","author":"Robert C. Martin","progress":0,"currentPage":0,"status":"want-to-read","updatedAt":"2025-08-27T09:09:56.273Z"}]}\n--- PATCH /reading/progress (alice) ---
+{"success":true,"data":{"userId":2,"bookId":2,"currentPage":120,"status":"in-progress","updatedAt":"2025-08-27T09:09:57.212Z"}}\n--- POST /friends/request (admin -> alice) ---
+{"success":true,"data":{"id":1,"senderId":1,"recipientId":2,"status":"pending"}}\n--- GET /friends/requests (alice incoming) ---
+1
+\n--- PATCH /friends/requests/:id accept (alice) ---
+{"success":true,"data":{"id":1,"senderId":1,"recipientId":2,"status":"accepted"}}\n--- GET /friends/2/progress (admin) ---
+{"success":true,"data":[{"userId":2,"bookId":2,"currentPage":120,"status":"in-progress","updatedAt":"2025-08-27T09:09:57.212Z"},{"userId":2,"bookId":3,"currentPage":0,"status":"want-to-read","updatedAt":"2025-08-27T09:09:56.273Z"}]}
