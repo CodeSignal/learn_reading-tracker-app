@@ -19,7 +19,7 @@ RUN npm prune --omit=dev
 # Final runtime image
 FROM node:20-alpine AS runner
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=3001
 WORKDIR /app
 
 # Only copy what is needed at runtime
@@ -29,6 +29,6 @@ COPY --from=build /app/package-lock.json ./package-lock.json
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/public ./public
 
-EXPOSE 3000
+EXPOSE 3001
 # Because tsconfig includes project root, compiled entry is dist/src/main.js
 CMD ["node", "dist/src/main.js"]
