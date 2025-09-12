@@ -13,25 +13,16 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.enableCors({
     origin: (origin, callback) => {
-      // Allow same-origin requests (like curl or health checks where no origin header is present)
-      if (!origin) {
-        return callback(null, true);
-      }
-
-      // Explicitly allow localhost:3000 for local dev
-      if (origin === 'http://localhost:3000') {
-        return callback(null, true);
-      }
-
-      // Allow any Codesignal preview subdomain
+      if (!origin) return callback(null, true);
+      if (origin === 'http://localhost:3000') return callback(null, true);
       if (/^https:\/\/[a-z0-9-]+\.preview\.codesignal\.dev$/.test(origin)) {
         return callback(null, true);
       }
-
-      // Otherwise block
       return callback(new Error(`CORS blocked for origin: ${origin}`), false);
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   app.useGlobalPipes(
