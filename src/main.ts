@@ -11,7 +11,14 @@ import { LogsService } from './common/logging/logs.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  app.enableCors({ origin: '*', credentials: true });
+  app.enableCors({
+    origin: [
+      'http://localhost:3000',
+      /\.preview\.codesignal\.dev$/, // allow any Codesignal preview frontend
+    ],
+    credentials: true,
+  });
+
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
@@ -35,7 +42,8 @@ async function bootstrap() {
       res.sendFile(join(publicDir, 'index.html')),
   );
 
-  const port = Number(process.env.PORT) || 3000;
+  const port = Number(process.env.PORT) || 3001;
+
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
 }
