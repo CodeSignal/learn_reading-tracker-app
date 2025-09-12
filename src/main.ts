@@ -11,21 +11,7 @@ import { LogsService } from './common/logging/logs.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (origin === 'http://localhost:3000') return callback(null, true);
-      if (/^https:\/\/[a-z0-9-]+\.preview\.codesignal\.dev$/.test(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error(`CORS blocked for origin: ${origin}`), false);
-    },
-    credentials: true,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'], // ✅ explicit list
-    preflightContinue: false,
-    optionsSuccessStatus: 204,
-  });
+  app.enableCors();
 
   app.useGlobalPipes(
     new ValidationPipe({
