@@ -22,7 +22,7 @@ async function bootstrap() {
     },
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: '*', // <--- important change
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'], // ✅ explicit list
     preflightContinue: false,
     optionsSuccessStatus: 204,
   });
