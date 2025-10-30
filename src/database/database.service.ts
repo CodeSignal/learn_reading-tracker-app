@@ -3,24 +3,50 @@ import { users, books, readingSessions, friendRequests, User, Book, ReadingSessi
 
 @Injectable()
 export class DatabaseService {
+  private readonly users: User[] = users;
+  private readonly books: Book[] = books;
+  private readonly readingSessions: ReadingSession[] = readingSessions;
+  private readonly friendRequests: FriendRequest[] = friendRequests;
+
+  /**
+   * Retrieve all users.
+   */
   getUsers(): User[] {
-    return users;
+    return this.users;
   }
 
+  /**
+   * Find a user by its ID.
+   */
+  findUserById(id: string): User | undefined {
+    return this.users.find(user => user.id === id);
+  }
+
+  /**
+   * Retrieve all books.
+   */
   getBooks(): Book[] {
-    return books;
+    return this.books;
   }
 
+  /**
+   * Find a book by its ID.
+   */
+  findBookById(id: string): Book | undefined {
+    return this.books.find(book => book.id === id);
+  }
+
+  /**
+   * Retrieve all reading sessions.
+   */
   getReadingSessions(): ReadingSession[] {
-    return readingSessions;
+    return this.readingSessions;
   }
 
+  /**
+   * Retrieve all friend requests.
+   */
   getFriendRequests(): FriendRequest[] {
-    return friendRequests;
-  }
-
-  findUserById(id: number): User | undefined {
-    return users.find((u) => u.id === id);
+    return this.friendRequests;
   }
 }
-

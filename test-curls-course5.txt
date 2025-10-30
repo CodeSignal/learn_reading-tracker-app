@@ -1,0 +1,89 @@
+# Course 5: Friends Workflow – Valid CURLs
+# This file contains two flows as requested plus acceptance:
+#   1) Admin logs in and sends a friend request to Alice
+#   2) Alice logs in and tries to send a friend request to herself (expected 400)
+#   3) Alice accepts Admin's friend request and verifies friendship lists
+#
+# Notes:
+# - IDs are UUIDs. We use a Node one-liner to parse JSON reliably instead of sed.
+# - "admin/admin" and "alice/user123" are seeded credentials.
+
+###############################
+# 1) Admin -> Alice (request) #
+###############################
+
+# Login as admin and capture token
+ADMIN_TOKEN=$(curl -s -X POST http://localhost:3000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin"}' | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);console.log(j.data.access_token)}catch(e){}})")
+echo "ADMIN_TOKEN: ${ADMIN_TOKEN}"
+
+# Get Alice's user id from /users
+ALICE_ID=$(curl -s http://localhost:3000/users | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s);let u=j.data.find(x=>x.username==='alice');if(u)console.log(u.id);})")
+echo "ALICE_ID: ${ALICE_ID}"
+
+# Admin sends a friend request to Alice (idempotent: may return an error if one is already pending)
+curl -s -X POST http://localhost:3000/friends/request \
+  -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"recipientId\":\"${ALICE_ID}\"}"
+
+
+########################################
+# 2) Alice -> Alice (self-request test) #
+########################################
+
+# Login as alice and capture token
+ALICE_TOKEN=$(curl -s -X POST http://localhost:3000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"user123"}' | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);console.log(j.data.access_token)}catch(e){}})")
+echo "ALICE_TOKEN: ${ALICE_TOKEN}"
+
+# Get Alice's own id from /users
+ALICE_SELF_ID=$(curl -s http://localhost:3000/users | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s);let u=j.data.find(x=>x.username==='alice');if(u)console.log(u.id);})")
+echo "ALICE_SELF_ID: ${ALICE_SELF_ID}"
+
+# Alice attempts to send a friend request to herself (should fail with 400)
+curl -s -o /dev/stderr -w "\nHTTP %{http_code}\n" -X POST http://localhost:3000/friends/request \
+  -H "Authorization: Bearer ${ALICE_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"recipientId\":\"${ALICE_SELF_ID}\"}"
+
+
+############################################################
+# 3) Alice accepts Admin's request and verifies friendships #
+############################################################
+
+# Resolve IDs and tokens
+ADMIN_ID=$(curl -s http://localhost:3000/users | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s);let u=j.data.find(x=>x.username==='admin');if(u)console.log(u.id);})")
+ALICE_ID=$(curl -s http://localhost:3000/users | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s);let u=j.data.find(x=>x.username==='alice');if(u)console.log(u.id);})")
+ALICE_TOKEN=$(curl -s -X POST http://localhost:3000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"user123"}' | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);console.log(j.data.access_token)}catch(e){}})")
+
+# Find pending request from admin; if none, have admin create one now
+REQ_ID=$(curl -s -H "Authorization: Bearer ${ALICE_TOKEN}" http://localhost:3000/friends/requests \
+  | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s);let r=(j.data||[]).find(x=>x.senderId==='${ADMIN_ID}' && x.status==='pending');if(r)console.log(r.id);})")
+if [ -z "$REQ_ID" ]; then
+  ADMIN_TOKEN=$(curl -s -X POST http://localhost:3000/auth/login \
+    -H 'Content-Type: application/json' \
+    -d '{"username":"admin","password":"admin"}' | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);console.log(j.data.access_token)}catch(e){}})")
+  curl -s -X POST http://localhost:3000/friends/request \
+    -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+    -H 'Content-Type: application/json' \
+    -d "{\"recipientId\":\"${ALICE_ID}\"}"
+  REQ_ID=$(curl -s -H "Authorization: Bearer ${ALICE_TOKEN}" http://localhost:3000/friends/requests \
+    | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s);let r=(j.data||[]).find(x=>x.senderId==='${ADMIN_ID}' && x.status==='pending');if(r)console.log(r.id);})")
+fi
+
+echo "REQ_ID: ${REQ_ID}"
+
+# Accept the request
+curl -s -X PATCH http://localhost:3000/friends/requests/${REQ_ID} \
+  -H "Authorization: Bearer ${ALICE_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"accepted"}'
+
+# Verify both users list each other as friends
+curl -s http://localhost:3000/users/${ADMIN_ID}/friends
+curl -s http://localhost:3000/users/${ALICE_ID}/friends

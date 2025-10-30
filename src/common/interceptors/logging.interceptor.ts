@@ -1,42 +1,32 @@
-import {
-  CallHandler,
-  ExecutionContext,
-  Injectable,
-  NestInterceptor,
-} from '@nestjs/common';
-import { Observable, tap } from 'rxjs';
-import { LogsService } from '../logging/logs.service';
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { Response } from 'express';
+import { Observable } from 'rxjs';
+import { tap } from 'rxjs/operators';
+import { LogsService } from '../logs/logs.service';
 
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
   constructor(private readonly logs: LogsService) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const req = context.switchToHttp().getRequest() as any;
+  intercept(ctx: ExecutionContext, next: CallHandler): Observable<any> {
+    const http = ctx.switchToHttp();
+    const req = http.getRequest<Request>();
+    const res = http.getResponse<Response>();
+    const method = (req as any).method;
+    const url = (req as any).originalUrl || (req as any).url;
     const start = Date.now();
+
     return next.handle().pipe(
-      tap({
-        next: () => {
-          const res = context.switchToHttp().getResponse() as any;
-          this.logs.add({
-            method: req.method,
-            url: req.originalUrl || req.url,
-            status: res.statusCode,
-            ms: Date.now() - start,
-            at: new Date().toISOString(),
-          });
-        },
-        error: () => {
-          const res = context.switchToHttp().getResponse() as any;
-          this.logs.add({
-            method: req.method,
-            url: req.originalUrl || req.url,
-            status: res.statusCode || 500,
-            ms: Date.now() - start,
-            at: new Date().toISOString(),
-          });
-        },
+      tap(() => {
+        this.logs.add({
+          method,
+          url,
+          status: (res as any).statusCode,
+          ms: Date.now() - start,
+          at: new Date().toISOString(),
+        });
       }),
     );
   }
 }
+

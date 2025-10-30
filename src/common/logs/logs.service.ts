@@ -18,7 +18,8 @@ export class LogsService {
     if (this.buffer.length > this.max) this.buffer.shift();
   }
 
-  list(limit = 15) {
+  list(limit = 20) {
     return this.buffer.slice(-limit).reverse();
   }
 }
+

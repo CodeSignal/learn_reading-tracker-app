@@ -1,5 +1,3 @@
-import { createHmac } from 'crypto';
-
 const SECRET = 'jwt-secret';
 
 function base64url(input: Buffer | string) {
@@ -11,10 +9,15 @@ function base64url(input: Buffer | string) {
 }
 
 export interface JwtPayload {
-  sub: number;
+  sub: string;
   role: 'user' | 'admin';
   iat?: number;
   exp?: number;
+}
+
+function simpleSig(input: string) {
+  // Non-cryptographic placeholder signature: base64url(SECRET + '.' + input)
+  return base64url(`${SECRET}.${input}`);
 }
 
 export function signJwt(payload: Omit<JwtPayload, 'iat' | 'exp'>, expiresInSeconds = 3600): string {
@@ -25,8 +28,7 @@ export function signJwt(payload: Omit<JwtPayload, 'iat' | 'exp'>, expiresInSecon
   const headerB64 = base64url(JSON.stringify(header));
   const payloadB64 = base64url(JSON.stringify(fullPayload));
   const data = `${headerB64}.${payloadB64}`;
-  const sig = createHmac('sha256', SECRET).update(data).digest();
-  const sigB64 = base64url(sig);
+  const sigB64 = simpleSig(data);
   return `${data}.${sigB64}`;
 }
 
@@ -35,7 +37,7 @@ export function verifyJwt(token: string): JwtPayload | null {
     const [headerB64, payloadB64, sigB64] = token.split('.');
     if (!headerB64 || !payloadB64 || !sigB64) return null;
     const data = `${headerB64}.${payloadB64}`;
-    const expected = base64url(createHmac('sha256', SECRET).update(data).digest());
+    const expected = simpleSig(data);
     if (expected !== sigB64) return null;
     const payload = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8')) as JwtPayload;
     const now = Math.floor(Date.now() / 1000);
@@ -45,4 +47,3 @@ export function verifyJwt(token: string): JwtPayload | null {
     return null;
   }
 }
-

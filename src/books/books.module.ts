@@ -10,4 +10,3 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
   exports: [BooksService],
 })
 export class BooksModule {}
-

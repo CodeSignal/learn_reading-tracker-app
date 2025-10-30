@@ -1,70 +1,79 @@
-# Course 6: Advanced Filtering, Aggregation, and Sorting — Test CURLs
+#!/usr/bin/env bash
+set -euo pipefail
+echo "== Course 6: Advanced Filtering, Aggregation, and Sorting — Test CURLs =="
 
-# 0) Public: basic reads
-curl -s http://localhost:3000/books
-curl -s http://localhost:3000/users
+# 0) Public: basic reads (wrapped responses)
+echo "-- Public: books --"
+curl -s http://localhost:3000/books | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let p=u(j);console.log(JSON.stringify(p,null,2))}catch(e){console.log(s)}})"
+echo "-- Public: users --"
+curl -s http://localhost:3000/users | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let p=u(j);console.log(JSON.stringify(p,null,2))}catch(e){console.log(s)}})"
 
 # 1) Admin login (seed: admin/admin)
 ADMIN_TOKEN=$(curl -s -X POST http://localhost:3000/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin"}' | sed -E 's/.*"access_token":"?([^",}]+).*/\1/')
+  -d '{"username":"admin","password":"admin"}' | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let p=u(j);console.log((p&&p.access_token)||'')}catch(e){}})")
 echo "ADMIN_TOKEN: ${ADMIN_TOKEN}"
 
-# 2) Admin creates enriched books with metadata
+# 2) Admin creates enriched books with metadata (idempotent; may duplicate titles)
+echo "-- Create: Clean Code --"
 curl -s -X POST http://localhost:3000/books \
   -H "Authorization: Bearer ${ADMIN_TOKEN}" \
   -H 'Content-Type: application/json' \
   -d '{"title":"Clean Code","author":"Robert C. Martin","totalPages":464,"publishDate":"2008-08-01"}'
+echo
+echo "-- Create: The Pragmatic Programmer --"
 curl -s -X POST http://localhost:3000/books \
   -H "Authorization: Bearer ${ADMIN_TOKEN}" \
   -H 'Content-Type: application/json' \
   -d '{"title":"The Pragmatic Programmer","author":"Andrew Hunt","totalPages":352,"publishDate":"1999-10-30"}'
+echo
 
 # 3) Public catalog search + pagination + sorting
-echo "Search q='the' sorted by publishDate desc, page 1 size 2"
-curl -s "http://localhost:3000/books?q=the&sortBy=publishDate&order=desc&page=1&pageSize=2"
+echo "-- Search q='the' sorted by publishDate desc, page 1 size 2 --"
+curl -s "http://localhost:3000/books?q=the&sortBy=publishDate&order=desc&page=1&pageSize=2" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let p=u(j);console.log(JSON.stringify(p,null,2))}catch(e){console.log(s)}})"
 
-# 4) Register and login a normal user (Alice)
-curl -s -X POST http://localhost:3000/auth/register \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"Alice","username":"alice","password":"user123"}'
+# 4) Login a normal user (Alice seeded)
 ALICE_TOKEN=$(curl -s -X POST http://localhost:3000/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"alice","password":"user123"}' | sed -E 's/.*"access_token":"?([^",}]+).*/\1/')
+  -d '{"username":"alice","password":"user123"}' | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let p=u(j);console.log((p&&p.access_token)||'')}catch(e){}})")
 echo "ALICE_TOKEN: ${ALICE_TOKEN}"
 
 # 5) Alice adds books to shelf: want-to-read and in-progress
-BOOKS=$(curl -s http://localhost:3000/books)
-BOOK1=$(echo "$BOOKS" | sed -nE 's/.*\{"id":([0-9]+),"title":"The Hobbit".*/\1/p' | head -n1)
-BOOK2=$(echo "$BOOKS" | sed -nE 's/.*\{"id":([0-9]+),"title":"Clean Code".*/\1/p' | head -n1)
-USERS=$(curl -s http://localhost:3000/users)
-ALICE_ID=$(echo "$USERS" | sed -nE 's/.*\{"id":([0-9]+),"name":"Alice".*/\1/p' | head -n1)
+BOOKS_JSON=$(curl -s http://localhost:3000/books)
+BOOK1=$(echo "$BOOKS_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let p=u(j);let arr=(p&&p.items)||p;let b=arr.find(x=>x.title==='The Hobbit');if(b)console.log(b.id);})")
+BOOK2=$(echo "$BOOKS_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let p=u(j);let arr=(p&&p.items)||p;let b=arr.find(x=>x.title==='Clean Code');if(b)console.log(b.id);})")
+USERS_JSON=$(curl -s http://localhost:3000/users)
+ALICE_ID=$(echo "$USERS_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let arr=u(j);let u2=arr.find(x=>x.username==='alice');if(u2)console.log(u2.id);})")
 echo "BOOK1 Hobbit: ${BOOK1} BOOK2 CleanCode: ${BOOK2} ALICE_ID: ${ALICE_ID}"
 
 # want-to-read (status overrides currentPage to 0)
 curl -s -X PATCH http://localhost:3000/reading/progress \
   -H "Authorization: Bearer ${ALICE_TOKEN}" \
   -H 'Content-Type: application/json' \
-  -d "{\"userId\":${ALICE_ID},\"bookId\":${BOOK1},\"currentPage\":0,\"status\":\"want-to-read\"}"
+  -d "{\"userId\":\"${ALICE_ID}\",\"bookId\":\"${BOOK1}\",\"currentPage\":0,\"status\":\"want-to-read\"}"
+echo
 
-# in-progress
+# in-progress (currentPage derives status if not provided)
 curl -s -X PATCH http://localhost:3000/reading/progress \
   -H "Authorization: Bearer ${ALICE_TOKEN}" \
   -H 'Content-Type: application/json' \
-  -d "{\"userId\":${ALICE_ID},\"bookId\":${BOOK2},\"currentPage\":120}"
+  -d "{\"userId\":\"${ALICE_ID}\",\"bookId\":\"${BOOK2}\",\"currentPage\":120}"
+echo
 
 # 6) Alice views her shelf: filter by status and sort by progress desc
 curl -s -H "Authorization: Bearer ${ALICE_TOKEN}" \
-  "http://localhost:3000/reading/shelf?status=in-progress&sortBy=progress&order=desc"
+  "http://localhost:3000/reading/shelf?status=in-progress&sortBy=progress&order=desc" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let p=u(j);console.log(JSON.stringify(p,null,2))}catch(e){console.log(s)}})"
 
 # 7) Book analytics: avgProgress sort and per-book stats
-echo "Catalog sorted by avgProgress desc"
-curl -s "http://localhost:3000/books?sortBy=avgProgress&order=desc&page=1&pageSize=10"
+echo "-- Catalog sorted by avgProgress desc --"
+curl -s "http://localhost:3000/books?sortBy=avgProgress&order=desc&page=1&pageSize=10" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let p=u(j);console.log(JSON.stringify(p,null,2))}catch(e){console.log(s)}})"
 
-echo "Stats for The Hobbit"
-curl -s "http://localhost:3000/books/${BOOK1}/stats"
+echo "-- Stats for The Hobbit --"
+curl -s "http://localhost:3000/books/${BOOK1}/stats" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let p=u(j);console.log(JSON.stringify(p,null,2))}catch(e){console.log(s)}})"
 
 # 8) User analytics
-USERS=$(curl -s http://localhost:3000/users)
-ALICE_ID=$(echo "$USERS" | sed -nE 's/.*\{"id":([0-9]+),"name":"Alice".*/\1/p' | head -n1)
-curl -s -H "Authorization: Bearer ${ALICE_TOKEN}" http://localhost:3000/users/${ALICE_ID}/stats
+USERS_JSON=$(curl -s http://localhost:3000/users)
+ALICE_ID=$(echo "$USERS_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let arr=u(j);let u2=arr.find(x=>x.username==='alice');if(u2)console.log(u2.id);})")
+curl -s -H "Authorization: Bearer ${ALICE_TOKEN}" http://localhost:3000/users/${ALICE_ID}/stats | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{let j=JSON.parse(s);function u(p){let x=p;for(let i=0;i<3;i++){if(x&&typeof x==='object'&&('data'in x)&&((x.success===true)||('meta'in x))){x=x.data;continue;}break;}return x;}let p=u(j);console.log(JSON.stringify(p,null,2))}catch(e){console.log(s)}})"
+
+echo "== Done =="

@@ -1,0 +1,251 @@
+== Course 6: Advanced Filtering, Aggregation, and Sorting — Test CURLs ==
+-- Public: books --
+{
+  "items": [
+    {
+      "id": "b772cd76-d5b2-4c93-97bd-c423593171c6",
+      "title": "The Hobbit",
+      "author": "J.R.R. Tolkien",
+      "totalPages": 310,
+      "publishDate": "1937-09-21",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "d0678180-2ddd-425c-a36b-babf2ad9d1f7",
+      "title": "Dune",
+      "author": "Frank Herbert",
+      "totalPages": 412,
+      "publishDate": "1965-08-01",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "a6d78ef3-e52e-4ea3-b328-b71d4cf9adaf",
+      "title": "Clean Code",
+      "author": "Robert C. Martin",
+      "totalPages": 464,
+      "publishDate": "2008-08-01",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "8a42ae3e-b20e-4535-bbc1-3e1e43ab26da",
+      "title": "The Pragmatic Programmer",
+      "author": "Andrew Hunt",
+      "totalPages": 352,
+      "publishDate": "1999-10-30",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "b01d73bb-abaa-48f5-93ee-e357ab46f3ff",
+      "title": "1984",
+      "author": "George Orwell",
+      "totalPages": 328,
+      "publishDate": "1949-06-08",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "7ad28510-0f49-40a7-a8d1-f74b3c530621",
+      "title": "To Kill a Mockingbird",
+      "author": "Harper Lee",
+      "totalPages": 281,
+      "publishDate": "1960-07-11",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "94a497d7-1341-4974-9b79-b7fb6407b80e",
+      "title": "The Name of the Wind",
+      "author": "Patrick Rothfuss",
+      "totalPages": 662,
+      "publishDate": "2007-03-27",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "40162d55-9413-4357-85ae-a55d98c44cbe",
+      "title": "Sapiens",
+      "author": "Yuval Noah Harari",
+      "totalPages": 443,
+      "publishDate": "2011-01-01",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    }
+  ],
+  "page": 1,
+  "pageSize": 20,
+  "total": 8
+}
+-- Public: users --
+[
+  {
+    "id": "5cf92552-0d0b-46b8-812d-3530173c594d",
+    "name": "Admin",
+    "username": "admin",
+    "passwordHash": "$2b$10$HLxs7wtjtkP39j8NHpsiT.UY.iusbzbr1U39m21tl.HF208oVqsIe",
+    "role": "admin",
+    "friendIds": []
+  },
+  {
+    "id": "c55d289a-78b0-40a6-8af0-9944d4dc2a7d",
+    "name": "Alice",
+    "username": "alice",
+    "passwordHash": "$2b$10$kaR.oWKQE8qeP3o80Q/6tuSiJlHqTdH09ca6LtYUO0qXV28DPLk0i",
+    "role": "user",
+    "friendIds": []
+  }
+]
+ADMIN_TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1Y2Y5MjU1Mi0wZDBiLTQ2YjgtODEyZC0zNTMwMTczYzU5NGQiLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NTkxMzM2MDIsImV4cCI6MTc1OTEzNzIwMn0.and0LXNlY3JldC5leUpoYkdjaU9pSklVekkxTmlJc0luUjVjQ0k2SWtwWFZDSjkuZXlKemRXSWlPaUkxWTJZNU1qVTFNaTB3WkRCaUxUUTJZamd0T0RFeVpDMHpOVE13TVRjell6VTVOR1FpTENKeWIyeGxJam9pWVdSdGFXNGlMQ0pwWVhRaU9qRTNOVGt4TXpNMk1ESXNJbVY0Y0NJNk1UYzFPVEV6TnpJd01uMA
+-- Create: Clean Code --
+{"data":{"id":"7d9577cf-590a-43a9-96d2-37a52808e5ba","title":"Clean Code","author":"Robert C. Martin","totalPages":464,"publishDate":"2008-08-01","uploadedAt":"2025-09-29T08:13:22.232Z"},"meta":{"timestamp":"2025-09-29T08:13:22.232Z"}}
+-- Create: The Pragmatic Programmer --
+{"data":{"id":"27a66250-d214-4975-b338-8b5ee0ca96ab","title":"The Pragmatic Programmer","author":"Andrew Hunt","totalPages":352,"publishDate":"1999-10-30","uploadedAt":"2025-09-29T08:13:22.240Z"},"meta":{"timestamp":"2025-09-29T08:13:22.240Z"}}
+-- Search q='the' sorted by publishDate desc, page 1 size 2 --
+{
+  "items": [
+    {
+      "id": "94a497d7-1341-4974-9b79-b7fb6407b80e",
+      "title": "The Name of the Wind",
+      "author": "Patrick Rothfuss",
+      "totalPages": 662,
+      "publishDate": "2007-03-27",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "8a42ae3e-b20e-4535-bbc1-3e1e43ab26da",
+      "title": "The Pragmatic Programmer",
+      "author": "Andrew Hunt",
+      "totalPages": 352,
+      "publishDate": "1999-10-30",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    }
+  ],
+  "page": 1,
+  "pageSize": 2,
+  "total": 4
+}
+ALICE_TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjNTVkMjg5YS03OGIwLTQwYTYtOGFmMC05OTQ0ZDRkYzJhN2QiLCJyb2xlIjoidXNlciIsImlhdCI6MTc1OTEzMzYwMiwiZXhwIjoxNzU5MTM3MjAyfQ.and0LXNlY3JldC5leUpoYkdjaU9pSklVekkxTmlJc0luUjVjQ0k2SWtwWFZDSjkuZXlKemRXSWlPaUpqTlRWa01qZzVZUzAzT0dJd0xUUXdZVFl0T0dGbU1DMDVPVFEwWkRSa1l6SmhOMlFpTENKeWIyeGxJam9pZFhObGNpSXNJbWxoZENJNk1UYzFPVEV6TXpZd01pd2laWGh3SWpveE56VTVNVE0zTWpBeWZR
+BOOK1 Hobbit: b772cd76-d5b2-4c93-97bd-c423593171c6 BOOK2 CleanCode: a6d78ef3-e52e-4ea3-b328-b71d4cf9adaf ALICE_ID: c55d289a-78b0-40a6-8af0-9944d4dc2a7d
+{"data":{"userId":"c55d289a-78b0-40a6-8af0-9944d4dc2a7d","bookId":"b772cd76-d5b2-4c93-97bd-c423593171c6","currentPage":0,"status":"want-to-read","updatedAt":"2025-09-29T08:13:22.473Z"},"meta":{"timestamp":"2025-09-29T08:13:22.473Z"}}
+{"data":{"userId":"c55d289a-78b0-40a6-8af0-9944d4dc2a7d","bookId":"a6d78ef3-e52e-4ea3-b328-b71d4cf9adaf","currentPage":120,"status":"in-progress","updatedAt":"2025-09-29T08:13:22.482Z"},"meta":{"timestamp":"2025-09-29T08:13:22.482Z"}}
+[
+  {
+    "bookId": "a6d78ef3-e52e-4ea3-b328-b71d4cf9adaf",
+    "title": "Clean Code",
+    "author": "Robert C. Martin",
+    "totalPages": 464,
+    "currentPage": 120,
+    "status": "in-progress",
+    "progress": 0.25862068965517243,
+    "updatedAt": "2025-09-29T08:13:22.482Z"
+  },
+  {
+    "bookId": "d0678180-2ddd-425c-a36b-babf2ad9d1f7",
+    "title": "Dune",
+    "author": "Frank Herbert",
+    "totalPages": 412,
+    "currentPage": 100,
+    "status": "in-progress",
+    "progress": 0.24271844660194175,
+    "updatedAt": "2025-09-29T08:10:09.120Z"
+  }
+]
+-- Catalog sorted by avgProgress desc --
+{
+  "items": [
+    {
+      "id": "8a42ae3e-b20e-4535-bbc1-3e1e43ab26da",
+      "title": "The Pragmatic Programmer",
+      "author": "Andrew Hunt",
+      "totalPages": 352,
+      "publishDate": "1999-10-30",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "a6d78ef3-e52e-4ea3-b328-b71d4cf9adaf",
+      "title": "Clean Code",
+      "author": "Robert C. Martin",
+      "totalPages": 464,
+      "publishDate": "2008-08-01",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "d0678180-2ddd-425c-a36b-babf2ad9d1f7",
+      "title": "Dune",
+      "author": "Frank Herbert",
+      "totalPages": 412,
+      "publishDate": "1965-08-01",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "b772cd76-d5b2-4c93-97bd-c423593171c6",
+      "title": "The Hobbit",
+      "author": "J.R.R. Tolkien",
+      "totalPages": 310,
+      "publishDate": "1937-09-21",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "b01d73bb-abaa-48f5-93ee-e357ab46f3ff",
+      "title": "1984",
+      "author": "George Orwell",
+      "totalPages": 328,
+      "publishDate": "1949-06-08",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "7ad28510-0f49-40a7-a8d1-f74b3c530621",
+      "title": "To Kill a Mockingbird",
+      "author": "Harper Lee",
+      "totalPages": 281,
+      "publishDate": "1960-07-11",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "94a497d7-1341-4974-9b79-b7fb6407b80e",
+      "title": "The Name of the Wind",
+      "author": "Patrick Rothfuss",
+      "totalPages": 662,
+      "publishDate": "2007-03-27",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "40162d55-9413-4357-85ae-a55d98c44cbe",
+      "title": "Sapiens",
+      "author": "Yuval Noah Harari",
+      "totalPages": 443,
+      "publishDate": "2011-01-01",
+      "uploadedAt": "2025-09-29T08:10:09.120Z"
+    },
+    {
+      "id": "7d9577cf-590a-43a9-96d2-37a52808e5ba",
+      "title": "Clean Code",
+      "author": "Robert C. Martin",
+      "totalPages": 464,
+      "publishDate": "2008-08-01",
+      "uploadedAt": "2025-09-29T08:13:22.232Z"
+    },
+    {
+      "id": "27a66250-d214-4975-b338-8b5ee0ca96ab",
+      "title": "The Pragmatic Programmer",
+      "author": "Andrew Hunt",
+      "totalPages": 352,
+      "publishDate": "1999-10-30",
+      "uploadedAt": "2025-09-29T08:13:22.240Z"
+    }
+  ],
+  "page": 1,
+  "pageSize": 10,
+  "total": 10
+}
+-- Stats for The Hobbit --
+{
+  "bookId": "b772cd76-d5b2-4c93-97bd-c423593171c6",
+  "readers": 2,
+  "avgCurrentPage": 25,
+  "completionRate": 0,
+  "avgProgressPct": 0.08064516129032258
+}
+{
+  "userId": "c55d289a-78b0-40a6-8af0-9944d4dc2a7d",
+  "totalPagesRead": 220,
+  "booksInShelf": 3,
+  "booksCompleted": 0,
+  "avgProgressPct": 0.18549747048903878
+}
+== Done ==

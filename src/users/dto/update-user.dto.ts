@@ -9,4 +9,3 @@ export class UpdateUserDto {
   @IsString()
   username?: string;
 }
-

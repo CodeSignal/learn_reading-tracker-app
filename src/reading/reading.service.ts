@@ -1,50 +1,92 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { BooksService } from '../books/books.service';
 import { UpdateProgressDto } from './dto/update-progress.dto';
+import { FindShelfDto } from './dto/find-shelf.dto';
 
 @Injectable()
 export class ReadingService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly booksService: BooksService,
+  ) {}
 
-  findAllForUser(userId: number) {
+  private deriveStatus(currentPage: number, totalPages: number): 'not-started' | 'in-progress' | 'completed' {
+    if (currentPage <= 0) return 'not-started';
+    if (totalPages > 0 && currentPage >= totalPages) return 'completed';
+    return 'in-progress';
+  }
+
+  /**
+   * Update or create a reading session for a user and book.
+   */
+  updateProgress(dto: UpdateProgressDto) {
+    // Ensure user and book exist
+    // Validate user exists
+    if (!this.db.findUserById(dto.userId)) {
+      throw new NotFoundException('User not found');
+    }
+    const book: any = this.booksService.findOne(dto.bookId);
+
+    let session = this.db
+      .getReadingSessions()
+      .find((s: any) => s.userId === dto.userId && s.bookId === dto.bookId);
+
+    const normalized =
+      dto.status === 'want-to-read'
+        ? { currentPage: 0, status: 'want-to-read' as const }
+        : { currentPage: dto.currentPage, status: dto.status ?? this.deriveStatus(dto.currentPage, book.totalPages) };
+
+    if (session) {
+      session.currentPage = normalized.currentPage;
+      (session as any).status = normalized.status;
+      (session as any).updatedAt = new Date().toISOString();
+    } else {
+      session = { userId: dto.userId, bookId: dto.bookId, currentPage: normalized.currentPage, status: normalized.status, updatedAt: new Date().toISOString() };
+      this.db.getReadingSessions().push(session);
+    }
+    return session;
+  }
+
+  /**
+   * Get reading progress for a specific book across all users.
+   */
+  getProgressByBook(bookId: string) {
+    this.booksService.findOne(bookId);
+    const sessions = this.db.getReadingSessions().filter((s: any) => String((s as any).bookId) === String(bookId));
+    return sessions.map(s => ({
+      user: this.db.findUserById(s.userId),
+      currentPage: s.currentPage,
+    }));
+  }
+
+  /**
+   * Get all reading sessions for a specific user (friend viewing).
+   */
+  findAllForUser(userId: string) {
+    if (!this.db.findUserById(userId)) throw new NotFoundException('User not found');
     return this.db.getReadingSessions().filter((s) => s.userId === userId);
   }
 
-  updateProgress(dto: UpdateProgressDto) {
-    const user = this.db.findUserById(dto.userId);
-    if (!user) throw new NotFoundException('User not found');
-    const book = this.db.getBooks().find((b) => b.id === dto.bookId);
-    if (!book) throw new NotFoundException('Book not found');
-    if (dto.currentPage < 0 || dto.currentPage > (book.totalPages || Infinity)) {
-      throw new BadRequestException('Invalid currentPage');
-    }
-    const sessions = this.db.getReadingSessions();
-    const existing = sessions.find((s) => s.userId === dto.userId && s.bookId === dto.bookId);
-    const updatedAt = new Date().toISOString();
-    if (existing) {
-      existing.currentPage = dto.currentPage;
-      if (dto.status) existing.status = dto.status;
-      existing.updatedAt = updatedAt;
-      return existing;
-    }
-    const created = { userId: dto.userId, bookId: dto.bookId, currentPage: dto.currentPage, status: dto.status, updatedAt };
-    sessions.push(created);
-    return created;
-  }
-
-  findShelf(userId: number, query: { status?: string; sortBy?: string; order?: 'asc' | 'desc' }) {
-    const sessions = this.findAllForUser(userId);
+  getShelf(userId: string, query: FindShelfDto) {
+    if (!this.db.findUserById(userId)) throw new NotFoundException('User not found');
     const books = this.db.getBooks();
-    let items = sessions.map((s: any) => {
-      const b = books.find((bb: any) => bb.id === s.bookId) as any;
+    const byId = new Map(books.map((b: any) => [String((b as any).id), b]));
+
+    let items = this.findAllForUser(userId).map((s: any) => {
+      const book = byId.get(String((s as any).bookId))! as any;
+      const total = book.totalPages || 0;
+      const status = (s as any).status ?? this.deriveStatus(s.currentPage, total);
+      const progress = total ? s.currentPage / total : 0;
       return {
-        bookId: s.bookId,
-        title: b?.title || '',
-        author: b?.author || '',
-        progress: b?.totalPages ? s.currentPage / b.totalPages : 0,
+        bookId: book.id,
+        title: book.title,
+        author: book.author,
+        totalPages: total,
         currentPage: s.currentPage,
-        status: s.status,
-        updatedAt: s.updatedAt,
+        status,
+        progress,
+        updatedAt: (s as any).updatedAt ?? null,
       };
     });
 
@@ -62,4 +104,3 @@ export class ReadingService {
     return items;
   }
 }
-

@@ -1,13 +1,13 @@
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Min, Max } from 'class-validator';
 
 export class FindAllBooksDto {
   @IsOptional()
   @IsString()
-  q?: string;
+  q?: string; // case-insensitive title/author search
 
   @IsOptional()
-  @IsEnum(['title', 'author', 'uploadedAt', 'avgProgress'])
-  sortBy?: 'title' | 'author' | 'uploadedAt' | 'avgProgress';
+  @IsEnum(['title', 'author', 'publishDate', 'uploadedAt', 'avgProgress'])
+  sortBy?: 'title' | 'author' | 'publishDate' | 'uploadedAt' | 'avgProgress';
 
   @IsOptional()
   @IsEnum(['asc', 'desc'])

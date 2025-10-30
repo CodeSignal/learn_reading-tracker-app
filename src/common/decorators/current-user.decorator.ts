@@ -1,7 +1,7 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 export interface TokenUser {
-  userId: number;
+  userId: string;
   role: 'user' | 'admin';
 }
 
@@ -11,4 +11,3 @@ export const CurrentUser = createParamDecorator(
     return req.user as TokenUser | undefined;
   },
 );
-

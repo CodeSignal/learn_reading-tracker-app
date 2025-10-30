@@ -3,6 +3,7 @@ import { DatabaseService } from '../database/database.service';
 import { hashPassword, verifyPassword } from '../utils/auth.utils';
 import { signJwt } from './jwt.util';
 import { persistUserSeed } from '../utils/auth.utils';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class AuthService {
@@ -13,20 +14,21 @@ export class AuthService {
       throw new BadRequestException('Missing required fields');
     }
     const users = this.db.getUsers();
-    const exists = users.some((u) => u.username === username);
+    const exists = users.some(u => u.username === username);
     if (exists) {
       throw new BadRequestException('Username already exists');
     }
-    const id = Math.max(0, ...users.map((u) => u.id)) + 1;
+    const id = uuidv4();
     const newUser = {
       id,
       name,
       username,
       passwordHash: hashPassword(password),
       role: 'user' as const,
-      friendIds: [] as number[],
+      friendIds: [] as string[],
     };
     this.db.getUsers().push(newUser);
+    // Persist into src/database/mock-db.ts for course base task continuity
     persistUserSeed(this.db);
     return { message: 'User registered successfully' };
   }
@@ -35,7 +37,7 @@ export class AuthService {
     if (!username || !password) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    const user = this.db.getUsers().find((u) => u.username === username);
+    const user = this.db.getUsers().find(u => u.username === username);
     if (!user || !verifyPassword(password, user.passwordHash)) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -43,4 +45,3 @@ export class AuthService {
     return { access_token };
   }
 }
-

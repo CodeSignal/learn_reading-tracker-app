@@ -4,16 +4,24 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { hashPassword } from '../utils/auth.utils';
 import { ReadingService } from '../reading/reading.service';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly db: DatabaseService, private readonly reading: ReadingService) {}
 
+  /**
+   * Retrieve all users.
+   */
   findAll() {
     return this.db.getUsers();
   }
 
-  findOne(id: number) {
+  /**
+   * Find a user by ID.
+   * @throws NotFoundException if user does not exist.
+   */
+  findOne(id: string) {
     const user = this.db.findUserById(id);
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found.`);
@@ -21,14 +29,17 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Create a new user with provided data.
+   */
   create(createUserDto: CreateUserDto) {
     const users = this.db.getUsers();
-    const id = Math.max(0, ...users.map((u) => u.id)) + 1;
-    let base = (createUserDto.name || `user${id}`).toLowerCase().replace(/\s+/g, '');
+    const id = uuidv4();
+    let base = (createUserDto.name || `user`).toLowerCase().replace(/\s+/g, '');
     if (!base) base = `user${id}`;
     let username = base;
     let suffix = 1;
-    const usernames = new Set(users.map((u) => u.username));
+    const usernames = new Set(users.map(u => u.username));
     while (usernames.has(username)) {
       username = `${base}${suffix++}`;
     }
@@ -38,16 +49,19 @@ export class UsersService {
       username,
       passwordHash: hashPassword('changeme'),
       role: 'user' as const,
-      friendIds: [] as number[],
+      friendIds: [] as string[],
     };
     users.push(newUser);
     return newUser;
   }
 
-  update(id: number, updateUserDto: UpdateUserDto) {
+  /**
+   * Update an existing user.
+   */
+  update(id: string, updateUserDto: UpdateUserDto) {
     const user = this.findOne(id);
     if (updateUserDto.username && updateUserDto.username !== user.username) {
-      const exists = this.db.getUsers().some((u) => u.username === updateUserDto.username && u.id !== id);
+      const exists = this.db.getUsers().some(u => u.username === updateUserDto.username && u.id !== id);
       if (exists) {
         throw new BadRequestException('Username already exists');
       }
@@ -59,7 +73,10 @@ export class UsersService {
     return user;
   }
 
-  remove(id: number) {
+  /**
+   * Remove a user by ID.
+   */
+  remove(id: string) {
     const users = this.db.getUsers();
     const index = users.findIndex((u) => u.id === id);
     if (index === -1) {
@@ -69,12 +86,15 @@ export class UsersService {
     return removedUser;
   }
 
-  findFriends(userId: number) {
+  /**
+   * Get a list of a user's friends (as full user objects).
+   */
+  findFriends(userId: string) {
     const user = this.findOne(userId);
-    return user.friendIds.map((fid) => this.findOne(fid));
+    return user.friendIds.map(fid => this.findOne(fid));
   }
 
-  getStats(userId: number) {
+  getStats(userId: string) {
     this.findOne(userId);
     const sessions = this.reading.findAllForUser(userId);
     const books = this.db.getBooks() as any[];
@@ -99,4 +119,3 @@ export class UsersService {
     };
   }
 }
-

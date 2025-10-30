@@ -1,11 +1,11 @@
-import { IsInt, Min, IsOptional, IsEnum } from 'class-validator';
+import { IsInt, Min, IsOptional, IsEnum, IsUUID } from 'class-validator';
 
 export class UpdateProgressDto {
-  @IsInt()
-  userId!: number;
+  @IsUUID()
+  userId!: string;
 
-  @IsInt()
-  bookId!: number;
+  @IsUUID()
+  bookId!: string;
 
   @IsInt()
   @Min(0)
@@ -15,4 +15,3 @@ export class UpdateProgressDto {
   @IsEnum(['not-started', 'in-progress', 'completed', 'want-to-read'])
   status?: 'not-started' | 'in-progress' | 'completed' | 'want-to-read';
 }
-

@@ -1,10 +1,8 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, ParseUUIDPipe, UseGuards, Query } from '@nestjs/common';
 import { BooksService } from './books.service';
 import { CreateBookDto } from './dto/create-book.dto';
 import { UpdateBookDto } from './dto/update-book.dto';
-import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Public } from '../common/decorators/public.decorator';
+import { AdminOnly } from '../common/decorators/admin-only.decorator';
 import { FindAllBooksDto } from './dto/find-all-books.dto';
 
 @Controller('books')
@@ -12,42 +10,50 @@ export class BooksController {
   constructor(private readonly booksService: BooksService) {}
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles('admin')
+  @AdminOnly()
+  // Create a new book entry (admin only)
   create(@Body() createBookDto: CreateBookDto) {
-    return this.booksService.create(createBookDto);
+    const data = this.booksService.create(createBookDto);
+    return { success: true, data };
   }
 
   @Get()
-  @Public()
+  // Retrieve books with search/sort/pagination
   findAll(@Query() query: FindAllBooksDto) {
-    return this.booksService.findAll(query);
+    const data = this.booksService.findAll(query);
+    return { success: true, data };
   }
 
   @Get(':id')
-  @Public()
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.booksService.findOne(id);
+  // Retrieve a specific book by ID
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
+    const data = this.booksService.findOne(id);
+    return { success: true, data };
   }
 
   @Get(':id/stats')
-  @Public()
-  getStats(@Param('id', ParseIntPipe) id: number) {
-    return this.booksService.getStats(id);
+  // Get aggregated stats for a book
+  getStats(@Param('id', ParseUUIDPipe) id: string) {
+    const data = this.booksService.getStats(id);
+    return { success: true, data };
   }
 
   @Patch(':id')
-  @UseGuards(RolesGuard)
-  @Roles('admin')
-  update(@Param('id', ParseIntPipe) id: number, @Body() updateBookDto: UpdateBookDto) {
-    return this.booksService.update(id, updateBookDto);
+  @AdminOnly()
+  // Update a book's data (admin only)
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateBookDto: UpdateBookDto,
+  ) {
+    const data = this.booksService.update(id, updateBookDto);
+    return { success: true, data };
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles('admin')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.booksService.remove(id);
+  @AdminOnly()
+  // Remove a book by ID (admin only)
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    const data = this.booksService.remove(id);
+    return { success: true, data };
   }
 }
-

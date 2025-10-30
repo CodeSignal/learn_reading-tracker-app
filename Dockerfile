@@ -31,4 +31,4 @@ COPY --from=build /app/public ./public
 
 EXPOSE 3001
 # Because tsconfig includes project root, compiled entry is dist/src/main.js
-CMD ["node", "dist/src/main.js"]
+CMD ["node", "dist/main.js"]

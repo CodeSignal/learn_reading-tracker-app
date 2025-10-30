@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException, ForbiddenException 
 import { DatabaseService } from '../database/database.service';
 import { UsersService } from '../users/users.service';
 import { ReadingService } from '../reading/reading.service';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class FriendsService {
@@ -11,7 +12,7 @@ export class FriendsService {
     private readonly reading: ReadingService,
   ) {}
 
-  requestFriend(senderId: number, recipientId: number) {
+  requestFriend(senderId: string, recipientId: string) {
     if (senderId === recipientId) {
       throw new BadRequestException('Cannot send a friend request to yourself.');
     }
@@ -22,23 +23,29 @@ export class FriendsService {
     const alreadyPending = requests.some(
       (r) => r.senderId === senderId && r.recipientId === recipientId && r.status === 'pending',
     );
-    if (alreadyPending) throw new BadRequestException('A pending request already exists.');
+    if (alreadyPending) {
+      throw new BadRequestException('A pending request already exists.');
+    }
 
-    const id = (requests.length ? Math.max(...requests.map((r) => r.id)) : 0) + 1;
+    const id = uuidv4();
     const newReq = { id, senderId, recipientId, status: 'pending' as const };
     requests.push(newReq);
     return newReq;
   }
 
-  getIncomingRequests(userId: number) {
-    return this.db.getFriendRequests().filter((r) => r.recipientId === userId && r.status === 'pending');
+  getIncomingRequests(userId: string) {
+    return this.db
+      .getFriendRequests()
+      .filter((r) => r.recipientId === userId && r.status === 'pending');
   }
 
-  handleRequest(actingUserId: number, requestId: number, status: 'accepted' | 'declined') {
+  handleRequest(actingUserId: string, requestId: string, status: 'accepted' | 'declined') {
     const req = this.db.getFriendRequests().find((r) => r.id === requestId);
     if (!req) throw new NotFoundException('Friend request not found.');
     if (req.status !== 'pending') throw new BadRequestException('Request already handled.');
-    if (req.recipientId !== actingUserId) throw new ForbiddenException('Only the recipient can act on this request.');
+    if (req.recipientId !== actingUserId)
+      throw new ForbiddenException('Only the recipient can act on this request.');
+
     req.status = status;
 
     if (status === 'accepted') {
@@ -50,7 +57,7 @@ export class FriendsService {
     return req;
   }
 
-  getFriendProgress(requesterId: number, friendId: number) {
+  getFriendProgress(requesterId: string, friendId: string) {
     const requester = this.users.findOne(requesterId);
     if (!requester.friendIds.includes(friendId)) {
       throw new ForbiddenException('You can only view progress of your friends.');
@@ -58,4 +65,3 @@ export class FriendsService {
     return this.reading.findAllForUser(friendId);
   }
 }
-
