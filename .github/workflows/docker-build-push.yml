@@ -4,13 +4,12 @@ run-name: Build and push reading-tracker-app image for ${{ github.ref_name }} by
 on:
   push:
     branches:
-      - 'main'
-      - 'develop'
+      - '**'
     tags:
       - 'v*'
   pull_request:
     branches:
-      - 'main'
+      - '**'
 
 env:
   REGISTRY: ghcr.io
